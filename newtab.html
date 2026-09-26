@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Momentum Focus</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="dashboard">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="music-button" class="icon-button" type="button" aria-label="Play focus music" aria-pressed="false">
+            <span aria-hidden="true">▶</span>
+          </button>
+          <select id="music-track" class="music-track" aria-label="Focus music track" hidden>
+            <option value="rain">Rain</option>
+            <option value="white">White noise</option>
+            <option value="wind">Wind</option>
+            <option value="tone">Calm tone</option>
+            <option value="chill">Chill radio (online)</option>
+          </select>
+          <input id="music-volume" class="music-volume" type="range" min="0" max="100" value="35" aria-label="Focus music volume" hidden />
+          <div class="links-widget">
+            <button id="links-button" class="icon-button" type="button" aria-label="Open quick links" aria-expanded="false">
+              <span aria-hidden="true">🔗</span>
+            </button>
+            <div id="links-dropdown" class="links-dropdown" hidden>
+              <ul class="links-list" aria-label="Saved links"></ul>
+              <form class="links-form">
+                <input class="link-label" type="text" maxlength="40" placeholder="Name" aria-label="Link name" />
+                <input class="link-url" type="text" maxlength="300" placeholder="https://example.com" aria-label="Link URL" />
+                <button type="submit" class="add-button" aria-label="Add link">+</button>
+              </form>
+            </div>
+          </div>
+          <p id="date" class="date"></p>
+        </div>
+        <button id="settings-button" class="icon-button" type="button" aria-label="Open settings">
+          <span aria-hidden="true">⚙</span>
+        </button>
+      </header>
+
+      <section class="hero" aria-labelledby="greeting">
+        <p id="greeting" class="greeting"></p>
+        <p id="clock" class="clock" aria-label="Current time"></p>
+        <blockquote id="quote" class="quote"></blockquote>
+      </section>
+
+      <section class="focus-card" aria-labelledby="focus-heading">
+        <p id="focus-heading" class="eyebrow">Today</p>
+        <label class="focus-label" for="focus">What is your main focus?</label>
+        <input id="focus" class="focus-input" type="text" maxlength="120" placeholder="Make today count" />
+
+        <div id="focus-start-row" class="focus-start-row">
+          <select id="focus-duration" aria-label="Focus session length">
+            <option value="5">5 min</option>
+            <option value="15">15 min</option>
+            <option value="25" selected>25 min</option>
+            <option value="45">45 min</option>
+            <option value="60">60 min</option>
+          </select>
+          <button id="focus-start" class="secondary-button" type="button">Start focus</button>
+        </div>
+
+        <div id="focus-countdown" class="focus-countdown" hidden>
+          <p id="focus-countdown-time" class="focus-countdown-time" aria-live="polite">25:00</p>
+          <p id="focus-countdown-task" class="focus-countdown-task"></p>
+          <div class="focus-countdown-actions">
+            <button id="focus-pause" class="secondary-button" type="button">Pause</button>
+            <button id="focus-stop" class="secondary-button" type="button">Stop session</button>
+          </div>
+        </div>
+
+        <div class="focus-history-header">
+          <h2 class="focus-history-heading">Focus history</h2>
+          <button id="clear-focus-history" class="clear-assistant" type="button">Clear history</button>
+        </div>
+        <ul id="focus-history-list" class="focus-history-list"></ul>
+      </section>
+
+      <section class="todo-card" aria-labelledby="todo-heading">
+        <div class="section-heading">
+          <h2 id="todo-heading">Tasks</h2>
+          <span id="task-count" class="task-count"></span>
+        </div>
+        <form id="todo-form" class="todo-form">
+          <input id="todo-input" type="text" maxlength="120" placeholder="Add a task" aria-label="New task" />
+          <button type="submit" class="add-button" aria-label="Add task">+</button>
+        </form>
+        <ul id="todo-list" class="todo-list"></ul>
+      </section>
+    </main>
+
+    <button id="assistant-button" class="assistant-button" type="button" aria-label="Open Focus assistant">
+      <span aria-hidden="true">✦</span>
+      <span>Focus assistant</span>
+    </button>
+
+    <aside id="assistant-panel" class="assistant-panel" aria-labelledby="assistant-heading" hidden>
+      <div class="settings-header">
+        <div>
+          <p id="assistant-mode-label" class="eyebrow">ChatGPT</p>
+          <h2 id="assistant-heading">Focus assistant</h2>
+        </div>
+        <button id="close-assistant" class="icon-button" type="button" aria-label="Close assistant">×</button>
+      </div>
+      <div id="assistant-messages" class="assistant-messages" aria-live="polite"></div>
+      <form id="assistant-form" class="assistant-form">
+        <input id="assistant-input" type="text" maxlength="240" placeholder="Ask for a plan or a nudge..." aria-label="Message the focus assistant" />
+        <button type="submit" class="add-button" aria-label="Send message">↑</button>
+      </form>
+      <button id="clear-assistant" class="clear-assistant" type="button">Clear conversation</button>
+    </aside>
+
+    <aside id="settings-panel" class="settings-panel" aria-labelledby="settings-heading" hidden>
+      <div class="settings-header">
+        <h2 id="settings-heading">Settings</h2>
+        <button id="close-settings" class="icon-button" type="button" aria-label="Close settings">×</button>
+      </div>
+      <div class="settings-tabs" role="tablist">
+        <button class="settings-tab" type="button" role="tab" data-tab="general" aria-selected="true">General</button>
+        <button class="settings-tab" type="button" role="tab" data-tab="links" aria-selected="false">Links</button>
+        <button class="settings-tab" type="button" role="tab" data-tab="ai" aria-selected="false">AI assistant</button>
+      </div>
+
+      <div id="settings-tab-general" class="settings-tab-panel" role="tabpanel">
+        <label for="name">Your name</label>
+        <input id="name" type="text" maxlength="40" placeholder="Friend" />
+        <label class="toggle">
+          <input id="twenty-four-hour" type="checkbox" />
+          <span>Use 24-hour time</span>
+        </label>
+        <button id="clear-tasks" class="secondary-button" type="button">Clear completed tasks</button>
+      </div>
+
+      <div id="settings-tab-links" class="settings-tab-panel" role="tabpanel" hidden>
+        <p class="settings-note">Manage the quick links shown from the 🔗 button on your dashboard.</p>
+        <ul class="links-list" aria-label="Saved links"></ul>
+        <form class="links-form">
+          <input class="link-label" type="text" maxlength="40" placeholder="Name" aria-label="Link name" />
+          <input class="link-url" type="text" maxlength="300" placeholder="https://example.com" aria-label="Link URL" />
+          <button type="submit" class="add-button" aria-label="Add link">+</button>
+        </form>
+      </div>
+
+      <div id="settings-tab-ai" class="settings-tab-panel" role="tabpanel" hidden>
+        <label class="toggle">
+          <input id="use-chatgpt" type="checkbox" checked />
+          <span>Connect to ChatGPT</span>
+        </label>
+        <label for="openai-key">OpenAI API key</label>
+        <input id="openai-key" type="password" autocomplete="off" placeholder="sk-..." />
+        <label for="openai-model">Model</label>
+        <select id="openai-model">
+          <option value="gpt-4o-mini">gpt-4o-mini</option>
+          <option value="gpt-4o">gpt-4o</option>
+          <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+        </select>
+        <p class="settings-note">
+          This assistant is online by default and talks to ChatGPT once you add your OpenAI API key. Your key is stored only on this device and is sent directly to OpenAI. Turn the toggle off to use the private offline coach instead.
+        </p>
+      </div>
+    </aside>
+    <div id="settings-backdrop" class="backdrop" hidden></div>
+
+    <script src="newtab.js"></script>
+  </body>
+</html>
