@@ -59,13 +59,24 @@
             <option value="25" selected>25 min</option>
             <option value="45">45 min</option>
             <option value="60">60 min</option>
+            <option value="custom">Custom...</option>
           </select>
+          <input
+            id="focus-custom-duration"
+            type="number"
+            min="1"
+            max="720"
+            placeholder="Mins"
+            aria-label="Custom focus duration in minutes"
+            hidden
+          />
           <button id="focus-start" class="secondary-button" type="button">Start focus</button>
         </div>
 
         <div id="focus-countdown" class="focus-countdown" hidden>
           <p id="focus-countdown-time" class="focus-countdown-time" aria-live="polite">25:00</p>
           <p id="focus-countdown-task" class="focus-countdown-task"></p>
+          <p id="focus-dnd-indicator" class="focus-dnd-indicator" hidden>🔕 Notifications paused</p>
           <div class="focus-countdown-actions">
             <button id="focus-pause" class="secondary-button" type="button">Pause</button>
             <button id="focus-stop" class="secondary-button" type="button">Stop session</button>
@@ -120,6 +131,7 @@
       </div>
       <div class="settings-tabs" role="tablist">
         <button class="settings-tab" type="button" role="tab" data-tab="general" aria-selected="true">General</button>
+        <button class="settings-tab" type="button" role="tab" data-tab="focus" aria-selected="false">Focus</button>
         <button class="settings-tab" type="button" role="tab" data-tab="links" aria-selected="false">Links</button>
         <button class="settings-tab" type="button" role="tab" data-tab="ai" aria-selected="false">AI assistant</button>
       </div>
@@ -134,6 +146,18 @@
         <button id="clear-tasks" class="secondary-button" type="button">Clear completed tasks</button>
       </div>
 
+      <div id="settings-tab-focus" class="settings-tab-panel" role="tabpanel" hidden>
+        <label class="toggle">
+          <input id="block-notifications" type="checkbox" checked />
+          <span>Block browser notifications while focusing</span>
+        </label>
+        <p class="settings-note">
+          While a focus session is running (including while paused), other sites'
+          notification pop-ups are silenced so you are not interrupted. They turn back on
+          automatically as soon as the session ends or is stopped.
+        </p>
+      </div>
+
       <div id="settings-tab-links" class="settings-tab-panel" role="tabpanel" hidden>
         <p class="settings-note">Manage the quick links shown from the 🔗 button on your dashboard.</p>
         <ul class="links-list" aria-label="Saved links"></ul>
@@ -145,20 +169,51 @@
       </div>
 
       <div id="settings-tab-ai" class="settings-tab-panel" role="tabpanel" hidden>
-        <label class="toggle">
-          <input id="use-chatgpt" type="checkbox" checked />
-          <span>Connect to ChatGPT</span>
-        </label>
-        <label for="openai-key">OpenAI API key</label>
-        <input id="openai-key" type="password" autocomplete="off" placeholder="sk-..." />
-        <label for="openai-model">Model</label>
-        <select id="openai-model">
-          <option value="gpt-4o-mini">gpt-4o-mini</option>
-          <option value="gpt-4o">gpt-4o</option>
-          <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+        <label for="ai-provider">Assistant</label>
+        <select id="ai-provider">
+          <option value="chatgpt">ChatGPT (OpenAI)</option>
+          <option value="deepseek">DeepSeek</option>
+          <option value="gemini">Gemini (Google)</option>
+          <option value="offline">Offline coach (private)</option>
         </select>
+
+        <div id="chatgpt-settings" class="ai-provider-settings">
+          <label for="openai-key">OpenAI API key</label>
+          <input id="openai-key" type="password" autocomplete="off" placeholder="sk-..." />
+          <label for="openai-model">Model</label>
+          <select id="openai-model">
+            <option value="gpt-4o-mini">gpt-4o-mini</option>
+            <option value="gpt-4o">gpt-4o</option>
+            <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+          </select>
+        </div>
+
+        <div id="deepseek-settings" class="ai-provider-settings">
+          <label for="deepseek-key">DeepSeek API key</label>
+          <input id="deepseek-key" type="password" autocomplete="off" placeholder="sk-..." />
+          <label for="deepseek-model">Model</label>
+          <select id="deepseek-model">
+            <option value="deepseek-chat">deepseek-chat</option>
+            <option value="deepseek-reasoner">deepseek-reasoner</option>
+          </select>
+        </div>
+
+        <div id="gemini-settings" class="ai-provider-settings">
+          <label for="gemini-key">Gemini API key</label>
+          <input id="gemini-key" type="password" autocomplete="off" placeholder="AIza..." />
+          <label for="gemini-model">Model</label>
+          <select id="gemini-model">
+            <option value="gemini-flash-latest">gemini-flash-latest (Recommended)</option>
+            <option value="gemini-flash-lite-latest">gemini-flash-lite-latest (Fastest & most stable)</option>
+            <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+            <option value="gemini-pro-latest">gemini-pro-latest</option>
+          </select>
+        </div>
+
         <p class="settings-note">
-          This assistant is online by default and talks to ChatGPT once you add your OpenAI API key. Your key is stored only on this device and is sent directly to OpenAI. Turn the toggle off to use the private offline coach instead.
+          Pick ChatGPT, DeepSeek, or Gemini to chat online with your own API key — stored
+          only on this device and sent directly to that provider — or choose the offline
+          coach for a private, rule-based assistant that never sends data over the network.
         </p>
       </div>
     </aside>

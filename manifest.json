@@ -6,6 +6,10 @@
   "chrome_url_overrides": {
     "newtab": "newtab.html"
   },
-  "permissions": ["storage", "tabs"],
-  "host_permissions": ["https://api.openai.com/*"]
+  "permissions": ["storage", "tabs", "contentSettings"],
+  "host_permissions": [
+    "https://api.openai.com/*",
+    "https://api.deepseek.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ]
 }

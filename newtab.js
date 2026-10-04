@@ -14,13 +14,19 @@ const defaults = {
   focus: "",
   use24Hour: false,
   tasks: [],
-  useChatGpt: true,
+  aiProvider: "chatgpt",
   openaiApiKey: "",
   openaiModel: "gpt-4o-mini",
+  deepseekApiKey: "",
+  deepseekModel: "deepseek-chat",
+  geminiApiKey: "",
+  geminiModel: "gemini-flash-latest",
   musicVolume: 35,
   musicTrack: "rain",
   focusHistory: [],
   links: [],
+  blockNotifications: true,
+  customFocusMinutes: 30,
 };
 
 let settings = { ...defaults };
@@ -53,6 +59,22 @@ function writeStoredValue(key, value) {
   }
 }
 
+function setNotificationsBlocked(blocked) {
+  if (!settings.blockNotifications) return;
+  if (typeof chrome === "undefined" || !chrome.contentSettings?.notifications) return;
+
+  // Silences other sites' notification pop-ups while a focus session is running
+  // (blocked), and restores the default behavior once it ends (cleared).
+  if (blocked) {
+    chrome.contentSettings.notifications.set({
+      primaryPattern: "<all_urls>",
+      setting: "block",
+    });
+  } else {
+    chrome.contentSettings.notifications.clear({});
+  }
+}
+
 const elements = {
   clock: document.querySelector("#clock"),
   date: document.querySelector("#date"),
@@ -69,14 +91,22 @@ const elements = {
   assistantMessages: document.querySelector("#assistant-messages"),
   assistantInput: document.querySelector("#assistant-input"),
   assistantModeLabel: document.querySelector("#assistant-mode-label"),
-  useChatGpt: document.querySelector("#use-chatgpt"),
+  aiProvider: document.querySelector("#ai-provider"),
+  chatgptSettings: document.querySelector("#chatgpt-settings"),
+  deepseekSettings: document.querySelector("#deepseek-settings"),
+  geminiSettings: document.querySelector("#gemini-settings"),
   openaiKey: document.querySelector("#openai-key"),
   openaiModel: document.querySelector("#openai-model"),
+  deepseekKey: document.querySelector("#deepseek-key"),
+  deepseekModel: document.querySelector("#deepseek-model"),
+  geminiKey: document.querySelector("#gemini-key"),
+  geminiModel: document.querySelector("#gemini-model"),
   musicButton: document.querySelector("#music-button"),
   musicVolume: document.querySelector("#music-volume"),
   musicTrack: document.querySelector("#music-track"),
   focusStartRow: document.querySelector("#focus-start-row"),
   focusDuration: document.querySelector("#focus-duration"),
+  focusCustomDuration: document.querySelector("#focus-custom-duration"),
   focusStart: document.querySelector("#focus-start"),
   focusCountdown: document.querySelector("#focus-countdown"),
   focusCountdownTime: document.querySelector("#focus-countdown-time"),
@@ -84,6 +114,8 @@ const elements = {
   focusPause: document.querySelector("#focus-pause"),
   focusStop: document.querySelector("#focus-stop"),
   focusHistoryList: document.querySelector("#focus-history-list"),
+  focusDndIndicator: document.querySelector("#focus-dnd-indicator"),
+  blockNotifications: document.querySelector("#block-notifications"),
   linksButton: document.querySelector("#links-button"),
   linksDropdown: document.querySelector("#links-dropdown"),
 };
@@ -317,7 +349,10 @@ function resetFocusUi() {
   elements.focusCountdown.hidden = true;
   elements.focus.disabled = false;
   elements.focusDuration.disabled = false;
+  elements.focusCustomDuration.disabled = false;
   elements.focusPause.textContent = "Pause";
+  setNotificationsBlocked(false);
+  elements.focusDndIndicator.hidden = true;
 }
 
 function finishFocusSession(completed) {
@@ -388,7 +423,19 @@ function togglePauseFocusSession() {
 
 function startFocusSession() {
   const task = elements.focus.value.trim() || "Untitled focus";
-  const minutes = Number(elements.focusDuration.value) || 25;
+  let minutes = 25;
+  if (elements.focusDuration.value === "custom") {
+    const rawVal = elements.focusCustomDuration.value.trim();
+    const customVal = Number(rawVal);
+    if (!rawVal || isNaN(customVal) || customVal <= 0) {
+      elements.focusCustomDuration.focus();
+      return;
+    }
+    minutes = Math.min(Math.max(Math.round(customVal), 1), 720);
+    settings.customFocusMinutes = minutes;
+  } else {
+    minutes = Number(elements.focusDuration.value) || 25;
+  }
 
   settings.focus = task;
   save();
@@ -403,16 +450,45 @@ function startFocusSession() {
   elements.focusCountdown.hidden = false;
   elements.focus.disabled = true;
   elements.focusDuration.disabled = true;
+  elements.focusCustomDuration.disabled = true;
   elements.focusPause.textContent = "Pause";
   elements.focusCountdownTask.textContent = `Focusing on "${task}"`;
   elements.focusCountdownTime.textContent = formatCountdown(focusTimer.totalSeconds);
+  setNotificationsBlocked(true);
+  elements.focusDndIndicator.hidden = !settings.blockNotifications;
 
   stopFocusTimerInterval();
   focusTimer.intervalId = setInterval(tickFocusCountdown, 1000);
 }
 
+const syncStorageKey = "momentumSyncedSettings";
+const localOnlySettingKeys = ["openaiApiKey", "deepseekApiKey", "geminiApiKey", "focusHistory"];
+
+function syncedSettingsSubset() {
+  const subset = { ...settings };
+  localOnlySettingKeys.forEach((key) => delete subset[key]);
+  return subset;
+}
+
 function save() {
   writeStoredValue(storageKey, settings);
+
+  // API keys and history stay on this device; everything else follows the Google account.
+  if (typeof chrome !== "undefined" && chrome.storage?.sync) {
+    chrome.storage.sync.set({ [syncStorageKey]: syncedSettingsSubset() }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+}
+
+function readSyncedSettings(callback) {
+  if (typeof chrome === "undefined" || !chrome.storage?.sync) {
+    callback({});
+    return;
+  }
+  chrome.storage.sync.get(syncStorageKey, (result) => {
+    callback(chrome.runtime.lastError ? {} : result[syncStorageKey] || {});
+  });
 }
 
 function saveAssistant() {
@@ -430,17 +506,38 @@ function renderAssistant() {
   elements.assistantMessages.scrollTop = elements.assistantMessages.scrollHeight;
 }
 
+const aiProviderLabels = {
+  chatgpt: "ChatGPT",
+  deepseek: "DeepSeek",
+  gemini: "Gemini",
+  offline: "Offline coach",
+};
+
+function currentAiApiKey() {
+  if (settings.aiProvider === "chatgpt") return settings.openaiApiKey;
+  if (settings.aiProvider === "deepseek") return settings.deepseekApiKey;
+  if (settings.aiProvider === "gemini") return settings.geminiApiKey;
+  return "";
+}
+
 function updateAssistantModeLabel() {
-  elements.assistantModeLabel.textContent = settings.useChatGpt ? "ChatGPT" : "Offline coach";
+  elements.assistantModeLabel.textContent = aiProviderLabels[settings.aiProvider] || "Offline coach";
+}
+
+function updateAiProviderVisibility() {
+  elements.chatgptSettings.hidden = settings.aiProvider !== "chatgpt";
+  elements.deepseekSettings.hidden = settings.aiProvider !== "deepseek";
+  elements.geminiSettings.hidden = settings.aiProvider !== "gemini";
 }
 
 function welcomeMessage() {
-  if (!settings.useChatGpt) {
+  if (settings.aiProvider === "offline") {
     return "I’m your private, offline focus coach. Ask me for a plan, a task suggestion, or a little momentum.";
   }
-  return settings.openaiApiKey
-    ? "I’m connected to ChatGPT. Ask me for a plan, a task suggestion, or a little momentum."
-    : "I’m your online assistant, powered by ChatGPT. Add your OpenAI API key in Settings to start chatting, or turn the toggle off to use the offline coach.";
+  const providerName = aiProviderLabels[settings.aiProvider];
+  return currentAiApiKey()
+    ? `I’m connected to ${providerName}. Ask me for a plan, a task suggestion, or a little momentum.`
+    : `I’m your online assistant, powered by ${providerName}. Add your ${providerName} API key in Settings to start chatting, or switch to the offline coach.`;
 }
 
 function createAssistantReply(message) {
@@ -472,23 +569,27 @@ function addAssistantMessage(role, text) {
   renderAssistant();
 }
 
-async function fetchChatGptReply(message) {
+function buildCoachSystemPrompt() {
   const openTasks = settings.tasks.filter((task) => !task.completed).map((task) => task.text);
-  const systemPrompt = `You are a warm, concise productivity coach embedded in a browser new-tab dashboard. The user's name is "${settings.name || "unknown"}", their focus for today is "${settings.focus || "not set"}", and their open tasks are: ${openTasks.length ? openTasks.join(", ") : "none"}. Keep replies under 100 words.`;
+  return `You are a warm, concise productivity coach embedded in a browser new-tab dashboard. The user's name is "${settings.name || "unknown"}", their focus for today is "${settings.focus || "not set"}", and their open tasks are: ${openTasks.length ? openTasks.join(", ") : "none"}. Keep replies under 100 words.`;
+}
+
+async function fetchOpenAiCompatibleReply({ endpoint, apiKey, model, message }) {
+  const systemPrompt = buildCoachSystemPrompt();
 
   const history = assistantMessages.slice(-8).map((entry) => ({
     role: entry.role === "user" ? "user" : "assistant",
     content: entry.text,
   }));
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.openaiApiKey}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: settings.openaiModel || "gpt-4o-mini",
+      model,
       messages: [{ role: "system", content: systemPrompt }, ...history, { role: "user", content: message }],
       max_tokens: 220,
     }),
@@ -496,27 +597,104 @@ async function fetchChatGptReply(message) {
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body?.error?.message || `OpenAI request failed (${response.status})`);
+    throw new Error(body?.error?.message || `Request failed (${response.status})`);
   }
 
   const data = await response.json();
   const reply = data.choices?.[0]?.message?.content?.trim();
-  if (!reply) throw new Error("OpenAI returned an empty response.");
+  if (!reply) throw new Error("The assistant returned an empty response.");
   return reply;
+}
+
+async function fetchGeminiReply({ apiKey, model, message }) {
+  const systemPrompt = buildCoachSystemPrompt();
+
+  const history = assistantMessages.slice(-8).map((entry) => ({
+    role: entry.role === "user" ? "user" : "model",
+    parts: [{ text: entry.text }],
+  }));
+
+  const primaryModel = model || "gemini-flash-latest";
+  const fallbackModel = "gemini-flash-lite-latest";
+
+  async function sendRequest(targetModel) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`;
+    return fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { role: "system", parts: [{ text: systemPrompt }] },
+        contents: [...history, { role: "user", parts: [{ text: message }] }],
+        generationConfig: { maxOutputTokens: 600 },
+      }),
+    });
+  }
+
+  let response = await sendRequest(primaryModel);
+
+  // If primary model is unavailable or overloaded (e.g. 503, 429, or high demand), attempt automatic fallback
+  if (!response.ok && primaryModel !== fallbackModel) {
+    const errData = await response.clone().json().catch(() => ({}));
+    const errMsg = (errData?.error?.message || "").toLowerCase();
+    if (response.status === 503 || response.status === 429 || errMsg.includes("demand") || errMsg.includes("overloaded") || errMsg.includes("resource") || errMsg.includes("not found")) {
+      const fallbackResponse = await sendRequest(fallbackModel);
+      if (fallbackResponse.ok) {
+        response = fallbackResponse;
+      }
+    }
+  }
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error?.message || `Request failed (${response.status})`);
+  }
+
+  const data = await response.json();
+  const reply = data.candidates?.[0]?.content?.parts?.map((part) => part.text).filter(Boolean).join("").trim();
+  if (!reply) throw new Error("The assistant returned an empty response.");
+  return reply;
+}
+
+function fetchAiReply(message) {
+  if (settings.aiProvider === "chatgpt") {
+    return fetchOpenAiCompatibleReply({
+      endpoint: "https://api.openai.com/v1/chat/completions",
+      apiKey: settings.openaiApiKey,
+      model: settings.openaiModel || "gpt-4o-mini",
+      message,
+    });
+  }
+  if (settings.aiProvider === "deepseek") {
+    return fetchOpenAiCompatibleReply({
+      endpoint: "https://api.deepseek.com/chat/completions",
+      apiKey: settings.deepseekApiKey,
+      model: settings.deepseekModel || "deepseek-chat",
+      message,
+    });
+  }
+  if (settings.aiProvider === "gemini") {
+    return fetchGeminiReply({
+      apiKey: settings.geminiApiKey,
+      model: settings.geminiModel || "gemini-flash-latest",
+      message,
+    });
+  }
+  return Promise.reject(new Error("No online assistant selected."));
 }
 
 async function handleAssistantMessage(message) {
   addAssistantMessage("user", message);
 
-  if (!settings.useChatGpt) {
+  if (settings.aiProvider === "offline") {
     addAssistantMessage("assistant", createAssistantReply(message));
     return;
   }
 
-  if (!settings.openaiApiKey) {
+  const providerName = aiProviderLabels[settings.aiProvider];
+  if (!currentAiApiKey()) {
     addAssistantMessage(
       "error",
-      "Add your OpenAI API key in Settings to use ChatGPT, or turn the toggle off to use the offline coach.",
+      `Add your ${providerName} API key in Settings to chat online, or switch to the offline coach.`,
     );
     return;
   }
@@ -525,12 +703,12 @@ async function handleAssistantMessage(message) {
   renderAssistant();
 
   try {
-    const reply = await fetchChatGptReply(message);
+    const reply = await fetchAiReply(message);
     assistantMessages.pop();
     addAssistantMessage("assistant", reply);
   } catch (error) {
     assistantMessages.pop();
-    addAssistantMessage("error", `ChatGPT request failed: ${error.message}`);
+    addAssistantMessage("error", `${providerName} request failed: ${error.message}`);
   }
 }
 
@@ -664,6 +842,21 @@ elements.focus.addEventListener("change", () => {
   save();
 });
 
+elements.focusDuration.addEventListener("change", () => {
+  const isCustom = elements.focusDuration.value === "custom";
+  elements.focusCustomDuration.hidden = !isCustom;
+  if (isCustom) {
+    elements.focusCustomDuration.focus();
+  }
+});
+
+elements.focusCustomDuration.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    startFocusSession();
+  }
+});
+
 elements.focusStart.addEventListener("click", () => startFocusSession());
 elements.focusPause.addEventListener("click", () => togglePauseFocusSession());
 elements.focusStop.addEventListener("click", () => finishFocusSession(false));
@@ -684,6 +877,18 @@ elements.twentyFourHour.addEventListener("change", () => {
   settings.use24Hour = elements.twentyFourHour.checked;
   save();
   renderClock();
+});
+
+elements.blockNotifications.addEventListener("change", () => {
+  settings.blockNotifications = elements.blockNotifications.checked;
+  save();
+  if (!settings.blockNotifications) {
+    setNotificationsBlocked(false);
+    elements.focusDndIndicator.hidden = true;
+  } else if (!elements.focusCountdown.hidden) {
+    setNotificationsBlocked(true);
+    elements.focusDndIndicator.hidden = false;
+  }
 });
 
 document.querySelector("#clear-tasks").addEventListener("click", () => {
@@ -727,10 +932,11 @@ document.querySelectorAll(".settings-tab").forEach((tab) => {
   });
 });
 
-elements.useChatGpt.addEventListener("change", () => {
-  settings.useChatGpt = elements.useChatGpt.checked;
+elements.aiProvider.addEventListener("change", () => {
+  settings.aiProvider = elements.aiProvider.value;
   save();
   updateAssistantModeLabel();
+  updateAiProviderVisibility();
 });
 
 elements.openaiKey.addEventListener("input", () => {
@@ -740,6 +946,26 @@ elements.openaiKey.addEventListener("input", () => {
 
 elements.openaiModel.addEventListener("change", () => {
   settings.openaiModel = elements.openaiModel.value;
+  save();
+});
+
+elements.deepseekKey.addEventListener("input", () => {
+  settings.deepseekApiKey = elements.deepseekKey.value.trim();
+  save();
+});
+
+elements.deepseekModel.addEventListener("change", () => {
+  settings.deepseekModel = elements.deepseekModel.value;
+  save();
+});
+
+elements.geminiKey.addEventListener("input", () => {
+  settings.geminiApiKey = elements.geminiKey.value.trim();
+  save();
+});
+
+elements.geminiModel.addEventListener("change", () => {
+  settings.geminiModel = elements.geminiModel.value;
   save();
 });
 
@@ -786,23 +1012,41 @@ document.querySelector("#close-assistant").addEventListener("click", () => {
   elements.assistantButton.hidden = false;
 });
 
+readSyncedSettings((syncedSettings) => {
 readStoredValue(storageKey, (settingsResult) => {
   readStoredValue(assistantStorageKey, (assistantResult) => {
-    settings = { ...defaults, ...(settingsResult[storageKey] || {}) };
+    const storedSettings = { ...(settingsResult[storageKey] || {}), ...syncedSettings };
+    settings = { ...defaults, ...storedSettings };
     assistantMessages = Array.isArray(assistantResult[assistantStorageKey])
       ? assistantResult[assistantStorageKey]
       : [];
     if (!Array.isArray(settings.focusHistory)) settings.focusHistory = [];
   if (!Array.isArray(settings.links)) settings.links = [];
+  if (typeof storedSettings.aiProvider !== "string" && typeof storedSettings.useChatGpt === "boolean") {
+    // Migrate the old on/off ChatGPT toggle to the new provider selection.
+    settings.aiProvider = storedSettings.useChatGpt === false ? "offline" : "chatgpt";
+  }
+  if (!settings.geminiModel || settings.geminiModel.startsWith("gemini-1.5") || settings.geminiModel.startsWith("gemini-2.0") || settings.geminiModel === "gemini-3.8-flash") {
+    // gemini-flash-latest points to Google's current active stable release and avoids high-demand spikes
+    settings.geminiModel = "gemini-flash-latest";
+  }
+  delete settings.useChatGpt;
   elements.focus.value = settings.focus;
   elements.name.value = settings.name;
   elements.twentyFourHour.checked = settings.use24Hour;
-  elements.useChatGpt.checked = settings.useChatGpt;
+  elements.aiProvider.value = settings.aiProvider;
   elements.openaiKey.value = settings.openaiApiKey;
   elements.openaiModel.value = settings.openaiModel;
+  elements.deepseekKey.value = settings.deepseekApiKey;
+  elements.deepseekModel.value = settings.deepseekModel;
+  elements.geminiKey.value = settings.geminiApiKey;
+  elements.geminiModel.value = settings.geminiModel;
   elements.musicVolume.value = settings.musicVolume;
   elements.musicTrack.value = settings.musicTrack;
+  elements.blockNotifications.checked = settings.blockNotifications;
+  elements.focusCustomDuration.value = settings.customFocusMinutes || 30;
   updateAssistantModeLabel();
+  updateAiProviderVisibility();
   document.querySelector("#quote").textContent = quotes[new Date().getDate() % quotes.length];
   renderClock();
   renderTasks();
@@ -814,4 +1058,5 @@ readStoredValue(storageKey, (settingsResult) => {
   }
   setInterval(renderClock, 1000);
   });
+});
 });
