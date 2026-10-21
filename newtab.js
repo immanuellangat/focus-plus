@@ -89,11 +89,11 @@ const defaults = {
   blockSites: false,
   stashOnFocus: false,
   blockGroups: [
-    { id: "social", emoji: "??", name: "Social Media", enabled: true, sites: ["facebook.com", "instagram.com", "x.com", "twitter.com", "tiktok.com", "snapchat.com", "reddit.com", "pinterest.com", "linkedin.com", "threads.net", "tumblr.com"] },
-    { id: "entertainment", emoji: "??", name: "Entertainment", enabled: true, sites: ["youtube.com", "netflix.com", "twitch.tv", "hulu.com", "disneyplus.com", "primevideo.com", "spotify.com", "9gag.com"] },
-    { id: "news", emoji: "??", name: "News", enabled: false, sites: ["cnn.com", "bbc.com", "nytimes.com", "foxnews.com", "theguardian.com", "news.google.com", "washingtonpost.com"] },
-    { id: "shopping", emoji: "??", name: "Shopping", enabled: false, sites: ["amazon.com", "ebay.com", "aliexpress.com", "temu.com", "shein.com", "etsy.com"] },
-    { id: "email", emoji: "??", name: "Email", enabled: false, sites: ["mail.google.com", "outlook.com", "mail.yahoo.com"] },
+    { id: "social", emoji: "📱", name: "Social Media", enabled: true, sites: ["facebook.com", "instagram.com", "x.com", "twitter.com", "tiktok.com", "snapchat.com", "reddit.com", "pinterest.com", "linkedin.com", "threads.net", "tumblr.com"] },
+    { id: "entertainment", emoji: "🎬", name: "Entertainment", enabled: true, sites: ["youtube.com", "netflix.com", "twitch.tv", "hulu.com", "disneyplus.com", "primevideo.com", "spotify.com", "9gag.com"] },
+    { id: "news", emoji: "📰", name: "News", enabled: false, sites: ["cnn.com", "bbc.com", "nytimes.com", "foxnews.com", "theguardian.com", "news.google.com", "washingtonpost.com"] },
+    { id: "shopping", emoji: "🛒", name: "Shopping", enabled: false, sites: ["amazon.com", "ebay.com", "aliexpress.com", "temu.com", "shein.com", "etsy.com"] },
+    { id: "email", emoji: "✉️", name: "Email", enabled: false, sites: ["mail.google.com", "outlook.com", "mail.yahoo.com"] },
   ],
   customFocusMinutes: 30,
 };
@@ -497,18 +497,18 @@ function restartMusicIfPlaying() {
 }
 
 const soundTiles = [
-  { id: "rain", name: "Rainfall", emoji: "???", color: "#1d5b73, #0b2c3d" },
-  { id: "wind", name: "Wind", emoji: "??", color: "#5e7b8a, #2b3d48" },
-  { id: "white", name: "Noise", emoji: "??", color: "#4a4a4a, #151515" },
-  { id: "ocean", name: "Ocean", emoji: "??", color: "#1b6fa0, #0a2a47" },
-  { id: "beach", name: "Beach", emoji: "???", color: "#c9a574, #7d5f3c" },
-  { id: "forest", name: "Forest", emoji: "??", color: "#2f6d3f, #123b22" },
-  { id: "stream", name: "Stream", emoji: "???", color: "#3f8f8a, #174a4d" },
-  { id: "train", name: "Train", emoji: "??", color: "#6b6b7a, #2c2c36" },
+  { id: "rain", name: "Rainfall", emoji: "🌧️", color: "#1d5b73, #0b2c3d" },
+  { id: "wind", name: "Wind", emoji: "💨", color: "#5e7b8a, #2b3d48" },
+  { id: "white", name: "Noise", emoji: "📻", color: "#4a4a4a, #151515" },
+  { id: "ocean", name: "Ocean", emoji: "🌊", color: "#1b6fa0, #0a2a47" },
+  { id: "beach", name: "Beach", emoji: "🏖️", color: "#c9a574, #7d5f3c" },
+  { id: "forest", name: "Forest", emoji: "🌲", color: "#2f6d3f, #123b22" },
+  { id: "stream", name: "Stream", emoji: "🏞️", color: "#3f8f8a, #174a4d" },
+  { id: "train", name: "Train", emoji: "🚂", color: "#6b6b7a, #2c2c36" },
   { id: "thunder", name: "Thunder", emoji: "⛈️", color: "#3b3f6b, #14152e" },
   { id: "fire", name: "Fire", emoji: "🔥", color: "#c4561f, #4a1a0a" },
-  { id: "tone", name: "Calm tone", emoji: "??", color: "#6b3fa0, #2a1650" },
-  { id: "chill", name: "Chill radio", emoji: "??", color: "#a0523f, #4a1f16" },
+  { id: "tone", name: "Calm tone", emoji: "🎶", color: "#6b3fa0, #2a1650" },
+  { id: "chill", name: "Chill radio", emoji: "🎧", color: "#a0523f, #4a1f16" },
 ];
 
 const soundPhotos = {
@@ -1368,7 +1368,7 @@ function renderBlocker() {
       row.className = "blocker-group-row";
       const name = document.createElement("span");
       name.className = "blocker-group-name";
-      name.textContent = `${group.emoji || "??"} ${group.name}`;
+      name.textContent = `${group.emoji || "📁"} ${group.name}`;
       const count = document.createElement("span");
       count.className = "blocker-count";
       count.textContent = String(parseBlockedSites(group.sites.join("\n")).length);
@@ -1387,7 +1387,7 @@ function renderBlocker() {
       const expand = document.createElement("button");
       expand.type = "button";
       expand.className = "blocker-expand";
-      expand.textContent = "?";
+      expand.textContent = "▾";
       expand.setAttribute("aria-label", `Edit ${group.name} sites`);
       expand.setAttribute("aria-expanded", String(expandedBlockerGroups.has(group.id)));
 
@@ -1438,7 +1438,7 @@ elements.blockerAddForm.addEventListener("submit", (event) => {
   const name = elements.blockerAddName.value.trim();
   if (!name) return;
   const id = `custom-${Date.now()}`;
-  settings.blockGroups.push({ id, emoji: "??", name, enabled: true, sites: [] });
+  settings.blockGroups.push({ id, emoji: "📁", name, enabled: true, sites: [] });
   expandedBlockerGroups.add(id);
   elements.blockerAddName.value = "";
   save();
@@ -1640,9 +1640,15 @@ readStoredValue(storageKey, (settingsResult) => {
   if (!Array.isArray(settings.blockGroups) || !settings.blockGroups.length) {
     settings.blockGroups = defaults.blockGroups.map((group) => ({ ...group, sites: [...group.sites] }));
   }
+  // Repair icons saved as "?" by an earlier build.
+  settings.blockGroups.forEach((group) => {
+    if (/^\?+$/.test(group.emoji || "")) {
+      group.emoji = (defaults.blockGroups.find((d) => d.id === group.id) || {}).emoji || "📁";
+    }
+  });
   if (typeof storedSettings.blockedSites === "string" && storedSettings.blockedSites.trim() !== "facebook.com\nx.com\ntwitter.com\ninstagram.com\ntiktok.com\nreddit.com\nyoutube.com" && !storedSettings.blockGroups) {
     // Keep sites typed into the earlier single-list blocker as their own group.
-    settings.blockGroups.push({ id: "mine", emoji: "??", name: "My sites", enabled: true, sites: parseBlockedSites(storedSettings.blockedSites) });
+    settings.blockGroups.push({ id: "mine", emoji: "📁", name: "My sites", enabled: true, sites: parseBlockedSites(storedSettings.blockedSites) });
   }
   delete settings.blockedSites;
   delete settings.useChatGpt;

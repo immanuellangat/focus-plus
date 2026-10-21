@@ -1,42 +1,35 @@
-### Introduction
+# Focus Plus
 
 Focus Plus is a small, dependency-free Chrome new-tab extension inspired
 by the calm dashboard experience of Momentum.
 
-It shows the current time and date, a rotating quote, a daily focus prompt, and
-a local to-do list.
+## Features
 
-### Lesson overview
+- Clock, greeting, daily quote and rotating nature backgrounds.
+- Focus timer with pause, stop and session history.
+- Tasks and quick links.
+- Ambient sounds, plus YouTube and Spotify players.
+- Site blocker and notification silencing during focus sessions.
+- Tab stash.
+- Focus assistant powered by ChatGPT, DeepSeek or Gemini, or a private offline coach.
 
-This section contains a general overview of topics that you will learn in this lesson.
-
-- How to load the extension in Chrome.
-- How to use the dashboard and its local settings.
-- How to use the built-in focus assistant, powered by ChatGPT, DeepSeek, or Gemini.
-- How to switch to the private offline coach when you prefer not to use the network.
-- How to play focus music, including an online chill radio stream.
-- How to run a focus countdown and review your session history.
-
-### Install locally
+## Install locally
 
 1. Open `chrome://extensions` in Chrome.
 1. Enable **Developer mode**.
 1. Select **Load unpacked**.
-1. Choose this `extensions/momentum` directory.
+1. Choose this folder (the one containing `manifest.json`).
 1. Open a new tab to see the dashboard.
 
-### Assignment
+To update the extension after editing, use **Reload** on its card in `chrome://extensions`.
 
-<div class="lesson-content__panel" markdown="1">
+## Storage
 
 Settings and tasks are stored with `chrome.storage.local` (and, apart from API keys and
 focus history, mirrored to `chrome.storage.sync` so they follow your Google account across
-Chrome profiles where the extension is installed). Nothing is sent to a server of ours. To
-update the extension after editing, use **Reload** on its card in `chrome://extensions`.
+Chrome profiles where the extension is installed). Nothing is sent to a server of ours.
 
-</div>
-
-### How it works
+## How it works
 
 The dashboard runs entirely in the browser and keeps preferences in local Chrome storage.
 The focus assistant supports four modes, chosen from the **Assistant** dropdown in the
@@ -112,9 +105,3 @@ the session ends or is stopped, and that page has an **Unblock sites** button as
 The **Focus** tab also has **Tab Stash**, which saves your other open tabs in the current window (pinned tabs are kept) and closes them, either
 automatically when a focus session starts or with **Stash open tabs now**. Use **Restore all** to reopen them.
 The stash is stored locally and is not synced between profiles.
-
-### Knowledge check
-
-The following questions are an opportunity to reflect on key topics in this lesson. If you can't answer a question, click on it to review the material, but keep in mind you are not expected to memorize or master this knowledge.
-
-- Did you load the extension from the `extensions/momentum` directory?

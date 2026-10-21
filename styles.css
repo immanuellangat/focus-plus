@@ -606,7 +606,7 @@ input::placeholder {
 
 .assistant-panel {
   position: fixed;
-  z-index: 3;
+  z-index: 7;
   right: 28px;
   bottom: 28px;
   display: flex;
@@ -1123,4 +1123,8 @@ input::placeholder {
 
 .credits a {
   color: #f5d69a;
+}
+
+#todo-card .task-count {
+  margin-right: 44px;
 }

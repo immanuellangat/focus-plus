@@ -1,4 +1,4 @@
-<!-- markdownlint-disable MD041 TOP004 -->
+<!-- markdownlint-disable MD041 -->
 
 # Chrome Web Store listing notes
 
