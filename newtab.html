@@ -73,6 +73,7 @@
             </div>
           </div>
           <p id="date" class="date"></p>
+          <p id="next-alarm-chip" class="date next-alarm-chip" hidden></p>
         </div>
         <button id="settings-button" class="icon-button" type="button" aria-label="Open settings">
           <span aria-hidden="true">⚙</span>
@@ -153,6 +154,13 @@
       </section>
     </main>
 
+    <div id="ringing-banner" class="ringing-banner" role="alertdialog" aria-labelledby="ringing-label" hidden>
+      <span class="ringing-icon" aria-hidden="true">⏰</span>
+      <span id="ringing-label" class="ringing-label"></span>
+      <button id="ringing-snooze" class="ringing-button" type="button">Snooze 5 min</button>
+      <button id="ringing-stop" class="ringing-button primary" type="button">Stop</button>
+    </div>
+
     <button id="assistant-button" class="assistant-button" type="button" aria-label="Open Focus assistant">
       <span aria-hidden="true">✦</span>
       <span>Focus assistant</span>
@@ -182,6 +190,7 @@
       <div class="settings-tabs" role="tablist">
         <button class="settings-tab" type="button" role="tab" data-tab="general" aria-selected="true">General</button>
         <button class="settings-tab" type="button" role="tab" data-tab="focus" aria-selected="false">Focus</button>
+        <button class="settings-tab" type="button" role="tab" data-tab="alarms" aria-selected="false">Alarms</button>
         <button class="settings-tab" type="button" role="tab" data-tab="links" aria-selected="false">Links</button>
         <button class="settings-tab" type="button" role="tab" data-tab="ai" aria-selected="false">AI assistant</button>
       </div>
@@ -244,6 +253,52 @@
           <button id="stash-clear" class="clear-assistant" type="button" hidden>Clear stash</button>
         </div>
         <ul id="stash-list" class="stash-list" aria-label="Stashed tabs"></ul>
+      </div>
+
+      <div id="settings-tab-alarms" class="settings-tab-panel" role="tabpanel" hidden>
+        <p id="next-alarm" class="settings-note"></p>
+        <ul id="alarm-list" class="alarm-list" aria-label="Alarms"></ul>
+        <form id="alarm-form" class="alarm-form">
+          <input id="alarm-time" type="time" required aria-label="Alarm time" />
+          <input id="alarm-label" type="text" maxlength="40" placeholder="Label (optional)" aria-label="Alarm label" />
+          <select id="alarm-repeat" aria-label="Repeat">
+            <option value="once">Once</option>
+            <option value="daily">Every day</option>
+            <option value="weekdays">Weekdays</option>
+          </select>
+          <button type="submit" class="add-button" aria-label="Add alarm">+</button>
+        </form>
+
+        <label for="alarm-sound">Alarm sound</label>
+        <div class="sound-pick">
+          <select id="alarm-sound">
+            <option value="chime">Chime</option>
+            <option value="bell">Bell</option>
+            <option value="beep">Beep</option>
+            <option value="rise">Soft rise</option>
+          </select>
+          <button type="button" class="sound-preview" data-for="alarm-sound">Preview</button>
+        </div>
+
+        <label for="focus-end-sound">Sound when a focus session ends</label>
+        <div class="sound-pick">
+          <select id="focus-end-sound">
+            <option value="chime">Chime</option>
+            <option value="bell">Bell</option>
+            <option value="beep">Beep</option>
+            <option value="rise">Soft rise</option>
+            <option value="none">No sound</option>
+          </select>
+          <button type="button" class="sound-preview" data-for="focus-end-sound">Preview</button>
+        </div>
+
+        <label for="alarm-volume">Alarm volume</label>
+        <input id="alarm-volume" class="alarm-volume" type="range" min="0" max="100" />
+
+        <p class="settings-note">
+          Alarms ring while Chrome is running, even with no new tab open. Stop or snooze them from
+          the notification or from the banner on the dashboard. A ring stops by itself after a minute.
+        </p>
       </div>
 
       <div id="settings-tab-links" class="settings-tab-panel" role="tabpanel" hidden>

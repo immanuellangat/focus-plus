@@ -515,6 +515,7 @@ input::placeholder {
 
 .settings-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 20px;
   padding-bottom: 14px;
@@ -1114,4 +1115,167 @@ input::placeholder {
 
 #todo-card .task-count {
   margin-right: 44px;
+}
+
+.next-alarm-chip {
+  margin-left: 14px;
+}
+
+.alarm-list {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alarm-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 6%);
+}
+
+.alarm-item.off {
+  opacity: 0.55;
+}
+
+.alarm-item .alarm-time {
+  min-width: 72px;
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.alarm-item .alarm-meta {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
+.alarm-item .delete-alarm {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+.alarm-empty {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.alarm-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.settings-panel .alarm-form input,
+.settings-panel .alarm-form select {
+  width: auto;
+  min-width: 0;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  color-scheme: dark;
+}
+
+.settings-panel .alarm-form #alarm-label {
+  flex: 1 1 100%;
+  order: -1;
+}
+
+.settings-panel .alarm-form #alarm-time,
+.settings-panel .alarm-form #alarm-repeat {
+  flex: 1;
+}
+
+.sound-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sound-preview {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.alarm-volume {
+  width: 100%;
+  accent-color: #d18b68;
+}
+
+.ringing-banner {
+  position: fixed;
+  z-index: 10;
+  top: 18px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgb(16 38 49 / 92%);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 35%);
+  color: var(--text);
+  transform: translateX(-50%);
+  backdrop-filter: blur(12px);
+}
+
+.ringing-banner[hidden] {
+  display: none;
+}
+
+.ringing-icon {
+  animation: ring 1s ease-in-out infinite;
+}
+
+.ringing-label {
+  font-weight: 600;
+}
+
+.ringing-button {
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.ringing-button.primary {
+  background: #d18b68;
+  color: #102631;
+  font-weight: 700;
+}
+
+@keyframes ring {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-14deg); }
+  75% { transform: rotate(14deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ringing-icon {
+    animation: none;
+  }
 }

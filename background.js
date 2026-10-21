@@ -4,8 +4,15 @@
 const storageKey = "momentumSettings";
 const sessionKey = "momentumSession";
 const assistantStorageKey = "momentumAssistant";
+const ringingKey = "momentumRinging";
 const alarmName = "focus-end";
+const clockAlarmPrefix = "clock-";
+const snoozePrefix = "snooze-";
 const blockRuleId = 1;
+const snoozeMinutes = 5;
+const ringSeconds = 60;
+// An alarm that fires this late (the computer was asleep or Chrome closed) is skipped.
+const staleAlarmMs = 15 * 60 * 1000;
 
 let queue = Promise.resolve();
 
@@ -138,6 +145,7 @@ async function endSession(completed) {
         message: `${minutes} minutes on "${session.task}". Time for a short break.`,
       }, () => void chrome.runtime.lastError);
     }
+    await playSound(settings.focusEndSound ?? "chime", 4);
   }
   await applyBlocks();
 }
@@ -161,6 +169,134 @@ async function reconcile() {
   await applyBlocks();
 }
 
+// --- Sounds (played by offscreen.html, since a service worker has no audio)
+
+async function ensureOffscreen() {
+  if (await chrome.offscreen.hasDocument()) return;
+  await chrome.offscreen.createDocument({
+    url: "offscreen.html",
+    reasons: ["AUDIO_PLAYBACK"],
+    justification: "Play alarm and focus-end sounds.",
+  }).catch(() => {});
+}
+
+async function playSound(sound, seconds) {
+  if (!sound || sound === "none") return;
+  const settings = (await getStored(storageKey)) || {};
+  await ensureOffscreen();
+  await chrome.runtime.sendMessage({
+    target: "offscreen",
+    type: "play",
+    sound,
+    seconds,
+    volume: settings.alarmVolume ?? 70,
+  }).catch(() => {});
+}
+
+async function closeOffscreen() {
+  if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument().catch(() => {});
+}
+
+// --- Alarm clock
+
+function nextOccurrence(alarm, from = new Date()) {
+  const [hours, minutes] = String(alarm.time || "").split(":").map(Number);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+  const next = new Date(from);
+  next.setHours(hours, minutes, 0, 0);
+  if (next <= from) next.setDate(next.getDate() + 1);
+  if (alarm.repeat === "weekdays") {
+    while (next.getDay() === 0 || next.getDay() === 6) next.setDate(next.getDate() + 1);
+  }
+  return next;
+}
+
+// Keep one chrome alarm per enabled alarm, set to its next occurrence.
+async function scheduleClockAlarms() {
+  const settings = (await getStored(storageKey)) || {};
+  const wanted = new Map();
+  (Array.isArray(settings.alarms) ? settings.alarms : [])
+    .filter((alarm) => alarm.enabled)
+    .forEach((alarm) => {
+      const next = nextOccurrence(alarm);
+      if (next) wanted.set(clockAlarmPrefix + alarm.id, next.getTime());
+    });
+  const existing = await chrome.alarms.getAll();
+  for (const alarm of existing) {
+    if (alarm.name.startsWith(clockAlarmPrefix) && !wanted.has(alarm.name)) await chrome.alarms.clear(alarm.name);
+  }
+  for (const [name, when] of wanted) {
+    const current = existing.find((alarm) => alarm.name === name);
+    if (!current || Math.abs(current.scheduledTime - when) > 1000) await chrome.alarms.create(name, { when });
+  }
+}
+
+function formatTime(time, use24Hour) {
+  const [hours, minutes] = time.split(":").map(Number);
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !use24Hour });
+}
+
+async function ringAlarm(alarm) {
+  const settings = (await getStored(storageKey)) || {};
+  const label = alarm.label || "Alarm";
+  await chrome.storage.local.set({ [ringingKey]: { id: alarm.id, label, time: alarm.time } });
+  chrome.notifications.create(`alarm-${alarm.id}`, {
+    type: "basic",
+    iconUrl: "icons/icon128.png",
+    title: `⏰ ${label}`,
+    message: `It's ${formatTime(alarm.time, settings.use24Hour)}.`,
+    buttons: [{ title: "Stop" }, { title: `Snooze ${snoozeMinutes} min` }],
+    requireInteraction: true,
+    priority: 2,
+  }, () => void chrome.runtime.lastError);
+  await playSound(settings.alarmSound ?? "bell", ringSeconds);
+}
+
+async function onClockAlarm(id, scheduledTime, snoozed) {
+  if (Date.now() - scheduledTime > staleAlarmMs) {
+    await scheduleClockAlarms();
+    return;
+  }
+  const settings = (await getStored(storageKey)) || {};
+  const alarms = Array.isArray(settings.alarms) ? settings.alarms : [];
+  const alarm = alarms.find((candidate) => candidate.id === id);
+  if (!alarm || (!alarm.enabled && !snoozed)) return;
+  await ringAlarm(alarm);
+  if (!snoozed && alarm.repeat === "once") {
+    // A one-time alarm switches itself off after ringing.
+    const updated = alarms.map((candidate) => (candidate.id === id ? { ...candidate, enabled: false } : candidate));
+    await chrome.storage.local.set({
+      [storageKey]: { ...settings, alarms: updated, updatedAt: Math.max(Date.now(), (settings.updatedAt || 0) + 1) },
+    });
+  }
+  await scheduleClockAlarms();
+}
+
+// `alarmId` comes from a notification button; without it, act on whatever is ringing.
+async function stopAlarm(alarmId) {
+  const ringing = await getStored(ringingKey);
+  const id = alarmId ?? ringing?.id;
+  if (!alarmId || ringing?.id === alarmId) {
+    await chrome.storage.local.remove(ringingKey);
+    await closeOffscreen();
+  }
+  if (id) chrome.notifications.clear(`alarm-${id}`);
+  return id;
+}
+
+async function snoozeAlarm(alarmId) {
+  const id = await stopAlarm(alarmId);
+  if (id) await chrome.alarms.create(snoozePrefix + id, { when: Date.now() + snoozeMinutes * 60 * 1000 });
+}
+
+// Playback finished on its own (a short sound, or a ring nobody stopped).
+async function soundDone() {
+  await chrome.storage.local.remove(ringingKey);
+  await closeOffscreen();
+}
+
 const handlers = {
   "focus:start": startSession,
   "focus:pause": pauseSession,
@@ -168,6 +304,10 @@ const handlers = {
   "focus:stop": () => endSession(false),
   "focus:complete": () => endSession(true),
   "focus:unblock": unblockSites,
+  "alarm:stop": () => stopAlarm(),
+  "alarm:snooze": () => snoozeAlarm(),
+  "sound:preview": ({ sound }) => playSound(sound, 2.5),
+  "sound:done": soundDone,
 };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -179,18 +319,42 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === alarmName) serial(() => endSession(true));
+  if (alarm.name.startsWith(clockAlarmPrefix)) {
+    serial(() => onClockAlarm(alarm.name.slice(clockAlarmPrefix.length), alarm.scheduledTime, false));
+  }
+  if (alarm.name.startsWith(snoozePrefix)) {
+    serial(() => onClockAlarm(alarm.name.slice(snoozePrefix.length), alarm.scheduledTime, true));
+  }
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && (changes[storageKey] || changes[sessionKey])) serial(applyBlocks);
+  if (area !== "local") return;
+  if (changes[storageKey] || changes[sessionKey]) serial(applyBlocks);
+  if (changes[storageKey]) serial(scheduleClockAlarms);
 });
 
-// Clicking the "session complete" notification opens the dashboard.
 chrome.notifications.onClicked.addListener((id) => {
+  if (id.startsWith("alarm-")) {
+    serial(() => stopAlarm(id.slice("alarm-".length)));
+    return;
+  }
+  // Clicking the "session complete" notification opens the dashboard.
   if (!id.startsWith("focus-done-")) return;
   chrome.notifications.clear(id);
   chrome.tabs.create({});
 });
 
+chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => {
+  if (!id.startsWith("alarm-")) return;
+  const alarmId = id.slice("alarm-".length);
+  serial(() => (buttonIndex === 0 ? stopAlarm(alarmId) : snoozeAlarm(alarmId)));
+});
+
+chrome.notifications.onClosed.addListener((id, byUser) => {
+  if (id.startsWith("alarm-") && byUser) serial(() => stopAlarm(id.slice("alarm-".length)));
+});
+
 chrome.runtime.onStartup.addListener(() => serial(reconcile));
 chrome.runtime.onInstalled.addListener(() => serial(reconcile));
+chrome.runtime.onStartup.addListener(() => serial(scheduleClockAlarms));
+chrome.runtime.onInstalled.addListener(() => serial(scheduleClockAlarms));

@@ -89,6 +89,10 @@ const defaults = {
   blockSites: false,
   stashOnFocus: false,
   notifyOnComplete: true,
+  alarms: [],
+  alarmSound: "bell",
+  focusEndSound: "chime",
+  alarmVolume: 70,
   blockGroups: [
     { id: "social", emoji: "📱", name: "Social Media", enabled: true, sites: ["facebook.com", "instagram.com", "x.com", "twitter.com", "tiktok.com", "snapchat.com", "reddit.com", "pinterest.com", "linkedin.com", "threads.net", "tumblr.com"] },
     { id: "entertainment", emoji: "🎬", name: "Entertainment", enabled: true, sites: ["youtube.com", "netflix.com", "twitch.tv", "hulu.com", "disneyplus.com", "primevideo.com", "spotify.com", "9gag.com"] },
@@ -210,6 +214,20 @@ const elements = {
   blockerAddForm: document.querySelector("#blocker-add-form"),
   blockerAddName: document.querySelector("#blocker-add-name"),
   linksButton: document.querySelector("#links-button"),
+  alarmList: document.querySelector("#alarm-list"),
+  alarmForm: document.querySelector("#alarm-form"),
+  alarmTime: document.querySelector("#alarm-time"),
+  alarmLabel: document.querySelector("#alarm-label"),
+  alarmRepeat: document.querySelector("#alarm-repeat"),
+  alarmSound: document.querySelector("#alarm-sound"),
+  focusEndSound: document.querySelector("#focus-end-sound"),
+  alarmVolume: document.querySelector("#alarm-volume"),
+  nextAlarm: document.querySelector("#next-alarm"),
+  nextAlarmChip: document.querySelector("#next-alarm-chip"),
+  ringingBanner: document.querySelector("#ringing-banner"),
+  ringingLabel: document.querySelector("#ringing-label"),
+  ringingStop: document.querySelector("#ringing-stop"),
+  ringingSnooze: document.querySelector("#ringing-snooze"),
   linksDropdown: document.querySelector("#links-dropdown"),
 };
 
@@ -650,7 +668,143 @@ function renderClock() {
     day: "numeric",
   });
   elements.greeting.textContent = `${getGreeting(now.getHours())}${settings.name ? `, ${settings.name}` : ""}.`;
+  renderNextAlarm();
 }
+
+// --- Alarm clock (background.js schedules and rings; the page edits and displays)
+
+const repeatLabels = { once: "Once", daily: "Every day", weekdays: "Weekdays" };
+const ringingStorageKey = "momentumRinging";
+
+function nextAlarmOccurrence(alarm, from = new Date()) {
+  const [hours, minutes] = String(alarm.time || "").split(":").map(Number);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+  const next = new Date(from);
+  next.setHours(hours, minutes, 0, 0);
+  if (next <= from) next.setDate(next.getDate() + 1);
+  if (alarm.repeat === "weekdays") {
+    while (next.getDay() === 0 || next.getDay() === 6) next.setDate(next.getDate() + 1);
+  }
+  return next;
+}
+
+function formatAlarmTime(date) {
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !settings.use24Hour });
+}
+
+function timeOfDay(time) {
+  const [hours, minutes] = time.split(":").map(Number);
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+}
+
+function renderNextAlarm() {
+  const upcoming = settings.alarms
+    .filter((alarm) => alarm.enabled)
+    .map((alarm) => ({ alarm, at: nextAlarmOccurrence(alarm) }))
+    .filter((entry) => entry.at)
+    .sort((a, b) => a.at - b.at)[0];
+  if (!upcoming) {
+    elements.nextAlarmChip.hidden = true;
+    elements.nextAlarm.textContent = settings.alarms.length ? "All alarms are off." : "No alarms yet. Add one below.";
+    return;
+  }
+  const isToday = upcoming.at.toDateString() === new Date().toDateString();
+  const day = isToday ? "" : `${upcoming.at.toLocaleDateString([], { weekday: "short" })} `;
+  const label = upcoming.alarm.label ? ` · ${upcoming.alarm.label}` : "";
+  elements.nextAlarmChip.textContent = `⏰ ${day}${formatAlarmTime(upcoming.at)}`;
+  elements.nextAlarmChip.hidden = false;
+  elements.nextAlarm.textContent = `Next alarm: ${day}${formatAlarmTime(upcoming.at)}${label}`;
+}
+
+function renderAlarms() {
+  elements.alarmList.replaceChildren(
+    ...settings.alarms.map((alarm) => {
+      const item = document.createElement("li");
+      item.className = `alarm-item${alarm.enabled ? "" : " off"}`;
+
+      const time = document.createElement("span");
+      time.className = "alarm-time";
+      time.textContent = formatAlarmTime(timeOfDay(alarm.time));
+
+      const meta = document.createElement("span");
+      meta.className = "alarm-meta";
+      meta.textContent = [alarm.label, repeatLabels[alarm.repeat] || "Once"].filter(Boolean).join(" · ");
+
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.checked = alarm.enabled;
+      toggle.setAttribute("aria-label", `Alarm at ${time.textContent} on`);
+      toggle.addEventListener("change", () => {
+        alarm.enabled = toggle.checked;
+        save();
+        renderAlarms();
+      });
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "delete-alarm";
+      remove.textContent = "×";
+      remove.setAttribute("aria-label", `Delete alarm at ${time.textContent}`);
+      remove.addEventListener("click", () => {
+        settings.alarms = settings.alarms.filter((candidate) => candidate.id !== alarm.id);
+        save();
+        renderAlarms();
+      });
+
+      item.append(time, meta, toggle, remove);
+      return item;
+    }),
+  );
+  renderNextAlarm();
+}
+
+function renderRinging(ringing) {
+  elements.ringingBanner.hidden = !ringing;
+  if (ringing) elements.ringingLabel.textContent = `${ringing.label} · ${formatAlarmTime(timeOfDay(ringing.time))}`;
+}
+
+elements.alarmForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!elements.alarmTime.value) return;
+  settings.alarms.push({
+    id: crypto.randomUUID(),
+    time: elements.alarmTime.value,
+    label: elements.alarmLabel.value.trim(),
+    repeat: elements.alarmRepeat.value,
+    enabled: true,
+  });
+  settings.alarms.sort((a, b) => a.time.localeCompare(b.time));
+  elements.alarmLabel.value = "";
+  save();
+  renderAlarms();
+});
+
+elements.alarmSound.addEventListener("change", () => {
+  settings.alarmSound = elements.alarmSound.value;
+  save();
+});
+
+elements.focusEndSound.addEventListener("change", () => {
+  settings.focusEndSound = elements.focusEndSound.value;
+  save();
+});
+
+elements.alarmVolume.addEventListener("change", () => {
+  settings.alarmVolume = Number(elements.alarmVolume.value);
+  save();
+});
+
+document.querySelectorAll(".sound-preview").forEach((button) => {
+  button.addEventListener("click", () => {
+    const sound = document.getElementById(button.dataset.for).value;
+    if (sound !== "none") sendFocusMessage({ type: "sound:preview", sound });
+  });
+});
+
+elements.ringingStop.addEventListener("click", () => sendFocusMessage({ type: "alarm:stop" }));
+elements.ringingSnooze.addEventListener("click", () => sendFocusMessage({ type: "alarm:snooze" }));
 
 const sessionStorageKey = "momentumSession";
 let focusSession = null;
@@ -1305,6 +1459,7 @@ elements.twentyFourHour.addEventListener("change", () => {
   settings.use24Hour = elements.twentyFourHour.checked;
   save();
   renderClock();
+  renderAlarms();
 });
 
 function setBlockSitesEnabled(enable) {
@@ -1622,6 +1777,10 @@ function applySettingsToUi() {
   elements.blockNotifications.checked = settings.blockNotifications;
   elements.stashOnFocus.checked = settings.stashOnFocus;
   elements.notifyOnComplete.checked = settings.notifyOnComplete;
+  elements.alarmSound.value = settings.alarmSound;
+  elements.focusEndSound.value = settings.focusEndSound;
+  elements.alarmVolume.value = settings.alarmVolume;
+  renderAlarms();
   renderBlocker();
   setValue(elements.focusCustomDuration, settings.customFocusMinutes || 30);
   updateAssistantModeLabel();
@@ -1647,6 +1806,7 @@ function listenForStorageChanges() {
       assistantMessages = Array.isArray(changes[assistantStorageKey].newValue) ? changes[assistantStorageKey].newValue : [];
       renderAssistant();
     }
+    if (changes[ringingStorageKey]) renderRinging(changes[ringingStorageKey].newValue);
     if (changes[sessionStorageKey]) {
       focusSession = changes[sessionStorageKey].newValue || null;
       renderFocusSession();
@@ -1669,6 +1829,7 @@ readStoredValue(storageKey, (settingsResult) => {
       : [];
     if (!Array.isArray(settings.focusHistory)) settings.focusHistory = [];
   if (!Array.isArray(settings.links)) settings.links = [];
+  if (!Array.isArray(settings.alarms)) settings.alarms = [];
   if (typeof storedSettings.aiProvider !== "string" && typeof storedSettings.useChatGpt === "boolean") {
     // Migrate the old on/off ChatGPT toggle to the new provider selection.
     settings.aiProvider = storedSettings.useChatGpt === false ? "offline" : "chatgpt";
@@ -1692,6 +1853,7 @@ readStoredValue(storageKey, (settingsResult) => {
   }
   delete settings.blockedSites;
   delete settings.useChatGpt;
+  readStoredValue(ringingStorageKey, (ringingResult) => renderRinging(ringingResult[ringingStorageKey]));
   readStoredValue(sessionStorageKey, (sessionResult) => {
     focusSession = sessionResult[sessionStorageKey] || null;
     applySettingsToUi();

@@ -100,6 +100,14 @@ on or off, and Chrome asks for extra permission the first time you enable it. Wh
 running, sites in the enabled groups and their subdomains show a "stay focused" page; the block lifts when
 the session ends or is stopped, and that page has an **Unblock sites** button as an escape hatch.
 
+The **Alarms** tab in **Settings** is an alarm clock. Add a time, an optional label and how often it
+repeats (once, every day or weekdays). When an alarm goes off, it rings with the sound you pick and shows
+a notification with **Stop** and **Snooze 5 min** buttons; any open dashboard also shows a banner with the
+same buttons. Alarms ring while Chrome is running, even with no new tab open, and a ring stops by itself
+after a minute. The next alarm is shown next to the date at the top of the dashboard. The same tab sets the
+sound played when a focus session ends (or **No sound**) and the alarm volume. All alarm sounds are
+synthesized, so they work offline.
+
 The **Focus** tab also has **Tab Stash**, which saves your other open tabs in the current window (pinned tabs are kept) and closes them, either
 automatically when a focus session starts or with **Stash open tabs now**. Use **Restore all** to reopen them.
 The stash is stored locally and is not synced between profiles.
