@@ -88,6 +88,7 @@ const defaults = {
   blockNotifications: true,
   blockSites: false,
   stashOnFocus: false,
+  notifyOnComplete: true,
   blockGroups: [
     { id: "social", emoji: "📱", name: "Social Media", enabled: true, sites: ["facebook.com", "instagram.com", "x.com", "twitter.com", "tiktok.com", "snapchat.com", "reddit.com", "pinterest.com", "linkedin.com", "threads.net", "tumblr.com"] },
     { id: "entertainment", emoji: "🎬", name: "Entertainment", enabled: true, sites: ["youtube.com", "netflix.com", "twitch.tv", "hulu.com", "disneyplus.com", "primevideo.com", "spotify.com", "9gag.com"] },
@@ -174,7 +175,6 @@ const elements = {
   geminiModel: document.querySelector("#gemini-model"),
   musicButton: document.querySelector("#music-button"),
   musicVolume: document.querySelector("#music-volume"),
-  musicTrack: document.querySelector("#music-track"),
   soundsToggle: document.querySelector("#sounds-toggle"),
   soundsCaret: document.querySelector("#sounds-caret"),
   mediaPanel: document.querySelector("#media-panel"),
@@ -198,6 +198,7 @@ const elements = {
   blockNotifications: document.querySelector("#block-notifications"),
   blockSites: document.querySelector("#block-sites"),
   stashOnFocus: document.querySelector("#stash-on-focus"),
+  notifyOnComplete: document.querySelector("#notify-on-complete"),
   stashNow: document.querySelector("#stash-now"),
   stashRestore: document.querySelector("#stash-restore"),
   stashClear: document.querySelector("#stash-clear"),
@@ -459,13 +460,6 @@ function stopMusic() {
     streamAudio = null;
   }
   musicPlaying = false;
-}
-
-function restartMusicIfPlaying() {
-  if (musicPlaying) {
-    stopMusic();
-    startMusic();
-  }
 }
 
 const soundTiles = [
@@ -836,19 +830,42 @@ function syncedSettingsSubset() {
 
 let syncTimer = null;
 
+// chrome.storage.sync caps each item at 8 KB, so the settings JSON is split across
+// numbered items ("momentumSyncedSettings:0", ":1", ...) plus a ":meta" item.
+const syncChunkSize = 3000;
+const syncMetaKey = `${syncStorageKey}:meta`;
+
 function writeSyncedSettings() {
   clearTimeout(syncTimer);
   syncTimer = null;
   // API keys and history stay on this device; everything else follows the Google account.
   // A failed sync write (size or rate quota) is harmless: local data carries a newer
   // updatedAt, so it wins over the stale synced copy on the next load.
-  chrome.storage.sync.set({ [syncStorageKey]: syncedSettingsSubset() }, () => {
-    void chrome.runtime.lastError;
+  const json = JSON.stringify(syncedSettingsSubset());
+  const chunks = Math.max(1, Math.ceil(json.length / syncChunkSize));
+  const items = { [syncMetaKey]: { chunks } };
+  for (let i = 0; i < chunks; i += 1) {
+    items[`${syncStorageKey}:${i}`] = json.slice(i * syncChunkSize, (i + 1) * syncChunkSize);
+  }
+  chrome.storage.sync.set(items, () => {
+    if (chrome.runtime.lastError) return;
+    // Drop chunks left over from a longer earlier write, and the old single-item copy.
+    chrome.storage.sync.get(null, (all) => {
+      const stale = Object.keys(all || {}).filter((key) => key === syncStorageKey
+        || (key.startsWith(`${syncStorageKey}:`) && Number(key.slice(syncStorageKey.length + 1)) >= chunks));
+      if (stale.length) chrome.storage.sync.remove(stale, () => void chrome.runtime.lastError);
+    });
   });
 }
 
+// Always move updatedAt forward, past any copy already seen, so a computer whose clock
+// runs ahead can't make its older synced copy look newer than edits made here.
+function nextUpdatedAt(current) {
+  return Math.max(Date.now(), (current || 0) + 1);
+}
+
 function save() {
-  settings.updatedAt = Date.now();
+  settings.updatedAt = nextUpdatedAt(settings.updatedAt);
   writeStoredValue(storageKey, settings);
 
   if (typeof chrome !== "undefined" && chrome.storage?.sync) {
@@ -867,8 +884,25 @@ function readSyncedSettings(callback) {
     callback({});
     return;
   }
-  chrome.storage.sync.get(syncStorageKey, (result) => {
-    callback(chrome.runtime.lastError ? {} : result[syncStorageKey] || {});
+  chrome.storage.sync.get(null, (all) => {
+    if (chrome.runtime.lastError || !all) {
+      callback({});
+      return;
+    }
+    const meta = all[syncMetaKey];
+    if (!meta) {
+      // Written by an older build as a single item.
+      callback(all[syncStorageKey] || {});
+      return;
+    }
+    let json = "";
+    for (let i = 0; i < meta.chunks; i += 1) json += all[`${syncStorageKey}:${i}`] ?? "";
+    try {
+      callback(JSON.parse(json));
+    } catch {
+      // A partial or corrupt copy; local data is used instead.
+      callback({});
+    }
   });
 }
 
@@ -1401,6 +1435,11 @@ elements.stashOnFocus.addEventListener("change", () => {
   save();
 });
 
+elements.notifyOnComplete.addEventListener("change", () => {
+  settings.notifyOnComplete = elements.notifyOnComplete.checked;
+  save();
+});
+
 elements.stashNow.addEventListener("click", stashOpenTabs);
 elements.stashRestore.addEventListener("click", restoreStashedTabs);
 elements.stashClear.addEventListener("click", () => {
@@ -1519,10 +1558,19 @@ document.addEventListener("click", (event) => {
   elements.soundsCaret.setAttribute("aria-expanded", "false");
 });
 
-elements.musicTrack.addEventListener("change", () => {
-  settings.musicTrack = elements.musicTrack.value;
-  save();
-  restartMusicIfPlaying();
+// Escape closes whichever top-bar dropdown is open.
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  [
+    [elements.soundsDropdown, elements.soundsCaret],
+    [elements.linksDropdown, elements.linksButton],
+    [elements.blockerDropdown, elements.blockerButton],
+  ].forEach(([dropdown, button]) => {
+    if (dropdown.hidden) return;
+    dropdown.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+    button.focus();
+  });
 });
 
 document.querySelector("#settings-button").addEventListener("click", () => toggleSettings(true));
@@ -1570,10 +1618,10 @@ function applySettingsToUi() {
   setValue(elements.geminiKey, settings.geminiApiKey);
   elements.geminiModel.value = settings.geminiModel;
   elements.musicVolume.value = settings.musicVolume;
-  elements.musicTrack.value = settings.musicTrack;
   renderSounds();
   elements.blockNotifications.checked = settings.blockNotifications;
   elements.stashOnFocus.checked = settings.stashOnFocus;
+  elements.notifyOnComplete.checked = settings.notifyOnComplete;
   renderBlocker();
   setValue(elements.focusCustomDuration, settings.customFocusMinutes || 30);
   updateAssistantModeLabel();

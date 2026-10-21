@@ -124,13 +124,20 @@ async function endSession(completed) {
     completed,
     timestamp: new Date().toISOString(),
   });
-  await chrome.storage.local.set({ [storageKey]: { ...settings, focusHistory: history, updatedAt: Date.now() } });
+  await chrome.storage.local.set({ [storageKey]: { ...settings, focusHistory: history, updatedAt: Math.max(Date.now(), (settings.updatedAt || 0) + 1) } });
   await chrome.storage.local.remove(sessionKey);
   await chrome.alarms.clear(alarmName);
   if (completed) {
-    await appendAssistantMessage(
-      `Nice work! You finished a ${Math.round(session.totalSeconds / 60)}-minute focus session on "${session.task}".`,
-    );
+    const minutes = Math.round(session.totalSeconds / 60);
+    await appendAssistantMessage(`Nice work! You finished a ${minutes}-minute focus session on "${session.task}".`);
+    if (settings.notifyOnComplete !== false) {
+      chrome.notifications.create(`focus-done-${session.id}`, {
+        type: "basic",
+        iconUrl: "icons/icon128.png",
+        title: "Focus session complete",
+        message: `${minutes} minutes on "${session.task}". Time for a short break.`,
+      }, () => void chrome.runtime.lastError);
+    }
   }
   await applyBlocks();
 }
@@ -176,6 +183,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && (changes[storageKey] || changes[sessionKey])) serial(applyBlocks);
+});
+
+// Clicking the "session complete" notification opens the dashboard.
+chrome.notifications.onClicked.addListener((id) => {
+  if (!id.startsWith("focus-done-")) return;
+  chrome.notifications.clear(id);
+  chrome.tabs.create({});
 });
 
 chrome.runtime.onStartup.addListener(() => serial(reconcile));

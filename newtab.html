@@ -12,13 +12,6 @@
     <main class="dashboard">
       <header class="topbar">
         <div class="topbar-left">
-          <select id="music-track" class="music-track" aria-label="Focus music track" hidden>
-            <option value="rain">Rain</option>
-            <option value="white">White noise</option>
-            <option value="wind">Wind</option>
-            <option value="tone">Calm tone</option>
-            <option value="chill">Chill radio (online)</option>
-          </select>
           <div class="links-widget sounds-widget">
             <button id="music-button" class="icon-button" type="button" aria-label="Play focus music" aria-pressed="false">
               <span aria-hidden="true">▶</span>
@@ -203,7 +196,7 @@
         <button id="clear-tasks" class="secondary-button" type="button">Clear completed tasks</button>
         <details class="credits">
           <summary>Credits and privacy</summary>
-          <p>Sounds from Wikimedia Commons: Rain, Beach, Forest and Stream (public domain), Train (CC0), Wind (CC BY-SA 4.0), Ocean (CC BY 3.0) and Thunder "rbh-thunder-storm" by Richard Humphries (CC BY 3.0). Photos from Unsplash. YouTube and Spotify players are provided by those services.</p>
+          <p>Sounds from Wikimedia Commons: Rain, Beach, Forest and Stream (public domain), Train (CC0), Wind by W.carter (CC BY-SA 4.0), Ocean by Luftrum (CC BY 3.0) and Thunder "rbh-thunder-storm" by Richard Humphries (CC BY 3.0). Photos from Unsplash. YouTube and Spotify players are provided by those services.</p>
           <p>Your settings, tasks and API keys stay in your browser. Text you send to the AI assistant goes only to the provider you choose. <a href="https://immanuellangat.github.io/focus-plus/PRIVACY.html" target="_blank" rel="noopener">Privacy policy</a></p>
         </details>
       </div>
@@ -217,6 +210,14 @@
           While a focus session is running (including while paused), other sites'
           notification pop-ups are silenced so you are not interrupted. They turn back on
           automatically as soon as the session ends or is stopped.
+        </p>
+
+        <label class="toggle">
+          <input id="notify-on-complete" type="checkbox" checked />
+          <span>Notify me when a session ends</span>
+        </label>
+        <p class="settings-note">
+          Shows a Chrome notification when your timer finishes, even if you are on another site.
         </p>
 
         <label class="toggle">
@@ -292,7 +293,6 @@
           <select id="gemini-model">
             <option value="gemini-flash-latest">gemini-flash-latest (Recommended)</option>
             <option value="gemini-flash-lite-latest">gemini-flash-lite-latest (Fastest & most stable)</option>
-            <option value="gemini-3.8-flash">gemini-3.8-flash</option>
             <option value="gemini-pro-latest">gemini-pro-latest</option>
           </select>
         </div>

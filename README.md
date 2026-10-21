@@ -43,18 +43,14 @@ directly to that provider (`https://api.openai.com`, `https://api.deepseek.com`,
 server. Switch the dropdown to **Offline coach** at any time to use a rule-based assistant
 that never sends messages or personal data over the network.
 
-The play button in the top-left corner offers focus music. Rain, white noise, wind, and
-calm tone are generated in the browser with the Web Audio API, so they work fully offline.
-**Chill radio (online)** instead streams a free lofi/chillout internet radio station
-(SomaFM's Groove Salad) and requires an active internet connection.
-
 Type your main focus, pick a session length (or choose **Custom...** to enter your own
 desired minutes), and select **Start focus** to begin a countdown timer. Select **Pause**
 to hold the countdown and **Resume** to continue, or **Stop session** to end early. Every
 session, whether finished or stopped early, is added to **Focus history** below, which is
 stored in `chrome.storage.local` so it persists between visits. A session belongs to the browser, not to one tab: every new tab
 shows the same countdown, and the session still ends on time (lifting its blocks) if you close them all.
-Use **Clear history** to
+When a session finishes, Chrome shows a notification (turn this off with
+**Notify me when a session ends** in the **Focus** tab of **Settings**). Use **Clear history** to
 remove it.
 
 The 🔗 button in the top-left corner opens a quick-links menu. Add a name and URL to
@@ -82,15 +78,15 @@ so each day shows a different one and the list starts over after the last. It al
 if the tab stays open.
 
 The **Play** button in the top bar plays and pauses music, and the small ▾ next to it drops down a tile grid (Rainfall, Wind, Noise, Ocean, Beach, Forest,
-Stream, Train, Thunder, Fire, Calm tone and Chill radio). Each tile shows a small Unsplash photo (loaded online, with a gradient fallback offline). Tap a tile to start it; the ▶/⏸ button inside the panel pauses and resumes it. The panel also has **YouTube** (Lofi Girl, Chillhop, jazz and piano live streams, nature sounds) and **Spotify** (Deep Focus, Lofi Beats, Peaceful Piano and similar playlists) tabs that play embedded players (YouTube plays through a small player page hosted on this project's GitHub Pages, because YouTube refuses to embed directly inside extension pages); they need an internet connection, Spotify plays full tracks only when you are logged in to Spotify in Chrome (otherwise 30-second previews), and starting one stops the built-in sound.
+Stream, Train, Thunder, Fire, Calm tone and Chill radio). Everything except Chill radio works offline; Chill radio streams SomaFM's Groove Salad and needs a connection. Each tile shows a small Unsplash photo (loaded online, with a gradient fallback offline). Tap a tile to start it; the ▶/⏸ button inside the panel pauses and resumes it. The panel also has **YouTube** (Lofi Girl, Chillhop, jazz and piano live streams, nature sounds) and **Spotify** (Deep Focus, Lofi Beats, Peaceful Piano and similar playlists) tabs that play embedded players (YouTube plays through a small player page hosted on this project's GitHub Pages, because YouTube refuses to embed directly inside extension pages); they need an internet connection, Spotify plays full tracks only when you are logged in to Spotify in Chrome (otherwise 30-second previews), and starting one stops the built-in sound.
 
 Rain, Wind, Ocean, Beach, Forest, Stream, Train and Thunder use real field recordings bundled in the `sounds/` folder, looped with a crossfade so
 there is no audible gap, and fall back to synthesized noise if a file can't load. White noise is
 generated as softer pink noise, and Fire is synthesized (soft embers plus random crackles) so it has no background hiss. Sound credits, from Wikimedia Commons:
 
 - `rain.ogg`: "Rain (1)", public domain.
-- `wind.ogg`: "Wind in Swedish pine forest at 25 mps", CC BY-SA 4.0.
-- `ocean.ogg`: "Oceanwavescrushing", CC BY 3.0.
+- `wind.ogg`: "Wind in Swedish pine forest at 25 mps" by W.carter, CC BY-SA 4.0.
+- `ocean.ogg`: "Oceanwavescrushing" by Luftrum, CC BY 3.0.
 - `beach.ogg`: "On a pebble beach", public domain.
 - `forest.ogg`: "Birds forest", public domain.
 - `stream.ogg`: "Shallow small river with stony riverbed", public domain.
