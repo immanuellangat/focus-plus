@@ -52,7 +52,9 @@ Type your main focus, pick a session length (or choose **Custom...** to enter yo
 desired minutes), and select **Start focus** to begin a countdown timer. Select **Pause**
 to hold the countdown and **Resume** to continue, or **Stop session** to end early. Every
 session, whether finished or stopped early, is added to **Focus history** below, which is
-stored in `chrome.storage.local` so it persists between visits. Use **Clear history** to
+stored in `chrome.storage.local` so it persists between visits. A session belongs to the browser, not to one tab: every new tab
+shows the same countdown, and the session still ends on time (lifting its blocks) if you close them all.
+Use **Clear history** to
 remove it.
 
 The 🔗 button in the top-left corner opens a quick-links menu. Add a name and URL to

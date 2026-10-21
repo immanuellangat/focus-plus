@@ -128,22 +128,6 @@ function writeStoredValue(key, value) {
   }
 }
 
-function setNotificationsBlocked(blocked) {
-  if (!settings.blockNotifications) return;
-  if (typeof chrome === "undefined" || !chrome.contentSettings?.notifications) return;
-
-  // Silences other sites' notification pop-ups while a focus session is running
-  // (blocked), and restores the default behavior once it ends (cleared).
-  if (blocked) {
-    chrome.contentSettings.notifications.set({
-      primaryPattern: "<all_urls>",
-      setting: "block",
-    });
-  } else {
-    chrome.contentSettings.notifications.clear({});
-  }
-}
-
 function parseBlockedSites(text) {
   return [...new Set(
     String(text || "")
@@ -153,25 +137,13 @@ function parseBlockedSites(text) {
   )];
 }
 
-function enabledBlockedDomains() {
-  return parseBlockedSites(
-    settings.blockGroups.filter((group) => group.enabled).flatMap((group) => group.sites).join("\n"),
-  );
-}
+const canRunSessions = typeof chrome !== "undefined" && Boolean(chrome.runtime?.id);
 
-function setSitesBlocked(blocked) {
-  if (typeof chrome === "undefined" || !chrome.declarativeNetRequest?.updateSessionRules) return;
-  const domains = blocked && settings.blockSites ? enabledBlockedDomains() : [];
-  const rules = domains.length
-    ? [{
-        id: 1,
-        priority: 1,
-        action: { type: "redirect", redirect: { extensionPath: "/blocked.html" } },
-        condition: { requestDomains: domains, resourceTypes: ["main_frame"] },
-      }]
-    : [];
-  // Replace any previous rule so ending a session (or editing the list) always takes effect.
-  chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [1], addRules: rules }, () => void chrome.runtime.lastError);
+// background.js owns the session and applies site/notification blocking from storage,
+// so the page only asks for changes and renders what is stored.
+function sendFocusMessage(message) {
+  if (!canRunSessions) return Promise.resolve();
+  return chrome.runtime.sendMessage(message).catch(() => {});
 }
 
 const elements = {
@@ -686,14 +658,10 @@ function renderClock() {
   elements.greeting.textContent = `${getGreeting(now.getHours())}${settings.name ? `, ${settings.name}` : ""}.`;
 }
 
-let focusTimer = {
-  intervalId: null,
-  endTime: 0,
-  totalSeconds: 0,
-  remainingSeconds: 0,
-  task: "",
-  isPaused: false,
-};
+const sessionStorageKey = "momentumSession";
+let focusSession = null;
+let focusTickId = null;
+let completionRequestedFor = null;
 
 function formatCountdown(totalSeconds) {
   const clamped = Math.max(0, totalSeconds);
@@ -741,89 +709,48 @@ function renderFocusHistory() {
     });
 }
 
-function stopFocusTimerInterval() {
-  if (focusTimer.intervalId) {
-    clearInterval(focusTimer.intervalId);
-    focusTimer.intervalId = null;
-  }
-}
-
-function resetFocusUi() {
-  elements.focusStartRow.hidden = false;
-  elements.focusCountdown.hidden = true;
-  elements.focus.disabled = false;
-  elements.focusDuration.disabled = false;
-  elements.focusCustomDuration.disabled = false;
-  elements.focusPause.textContent = "Pause";
-  setNotificationsBlocked(false);
-  setSitesBlocked(false);
-  elements.focusDndIndicator.hidden = true;
-}
-
-function finishFocusSession(completed) {
-  const remainingSeconds = focusTimer.isPaused
-    ? focusTimer.remainingSeconds
-    : Math.max(0, Math.round((focusTimer.endTime - Date.now()) / 1000));
-  const actualSeconds = completed ? focusTimer.totalSeconds : focusTimer.totalSeconds - remainingSeconds;
-
-  stopFocusTimerInterval();
-  focusTimer.isPaused = false;
-  settings.focusHistory.push({
-    task: focusTimer.task,
-    plannedMinutes: Math.round(focusTimer.totalSeconds / 60),
-    actualSeconds: Math.max(0, actualSeconds),
-    completed,
-    timestamp: new Date().toISOString(),
-  });
-  save();
-  renderFocusHistory();
-  resetFocusUi();
-
-  if (completed) {
-    addAssistantMessage(
-      "assistant",
-      `Nice work! You finished a ${Math.round(focusTimer.totalSeconds / 60)}-minute focus session on "${focusTimer.task}".`,
-    );
-  }
+function sessionRemainingSeconds(session) {
+  return session.paused
+    ? session.remainingSeconds
+    : Math.max(0, Math.ceil((session.endTime - Date.now()) / 1000));
 }
 
 function tickFocusCountdown() {
-  const remainingMs = focusTimer.endTime - Date.now();
-  const remainingSeconds = Math.ceil(remainingMs / 1000);
-  focusTimer.remainingSeconds = Math.max(0, remainingSeconds);
+  if (!focusSession) return;
+  const remaining = sessionRemainingSeconds(focusSession);
+  elements.focusCountdownTime.textContent = formatCountdown(remaining);
+  if (remaining <= 0 && !focusSession.paused && completionRequestedFor !== focusSession.id) {
+    // The background alarm also ends it; whichever arrives second is ignored.
+    completionRequestedFor = focusSession.id;
+    sendFocusMessage({ type: "focus:complete" });
+  }
+}
 
-  if (remainingSeconds <= 0) {
-    elements.focusCountdownTime.textContent = "0:00";
-    finishFocusSession(true);
+function renderFocusSession() {
+  const running = Boolean(focusSession);
+  elements.focusStartRow.hidden = running;
+  elements.focusCountdown.hidden = !running;
+  elements.focus.disabled = running;
+  elements.focusDuration.disabled = running;
+  elements.focusCustomDuration.disabled = running;
+  elements.focusDndIndicator.hidden = !(running && settings.blockNotifications);
+
+  if (!running) {
+    clearInterval(focusTickId);
+    focusTickId = null;
+    elements.focusPause.textContent = "Pause";
     return;
   }
 
-  elements.focusCountdownTime.textContent = formatCountdown(remainingSeconds);
-}
-
-function pauseFocusSession() {
-  if (focusTimer.isPaused) return;
-  focusTimer.remainingSeconds = Math.max(0, Math.ceil((focusTimer.endTime - Date.now()) / 1000));
-  stopFocusTimerInterval();
-  focusTimer.isPaused = true;
-  elements.focusPause.textContent = "Resume";
-}
-
-function resumeFocusSession() {
-  if (!focusTimer.isPaused) return;
-  focusTimer.endTime = Date.now() + focusTimer.remainingSeconds * 1000;
-  focusTimer.isPaused = false;
-  elements.focusPause.textContent = "Pause";
-  stopFocusTimerInterval();
-  focusTimer.intervalId = setInterval(tickFocusCountdown, 1000);
+  elements.focusPause.textContent = focusSession.paused ? "Resume" : "Pause";
+  elements.focusCountdownTask.textContent = `Focusing on "${focusSession.task}"`;
+  tickFocusCountdown();
+  if (!focusTickId) focusTickId = setInterval(tickFocusCountdown, 1000);
 }
 
 function togglePauseFocusSession() {
-  if (focusTimer.isPaused) {
-    resumeFocusSession();
-  } else {
-    pauseFocusSession();
-  }
+  if (!focusSession) return;
+  sendFocusMessage({ type: focusSession.paused ? "focus:resume" : "focus:pause" });
 }
 
 const stashStorageKey = "momentumTabStash";
@@ -887,30 +814,15 @@ function startFocusSession() {
     minutes = Number(elements.focusDuration.value) || 25;
   }
 
+  if (!canRunSessions) {
+    elements.focusStart.textContent = "Only works in the installed extension";
+    return;
+  }
+
   settings.focus = task;
   save();
-
-  focusTimer.totalSeconds = minutes * 60;
-  focusTimer.endTime = Date.now() + focusTimer.totalSeconds * 1000;
-  focusTimer.remainingSeconds = focusTimer.totalSeconds;
-  focusTimer.task = task;
-  focusTimer.isPaused = false;
-
-  elements.focusStartRow.hidden = true;
-  elements.focusCountdown.hidden = false;
-  elements.focus.disabled = true;
-  elements.focusDuration.disabled = true;
-  elements.focusCustomDuration.disabled = true;
-  elements.focusPause.textContent = "Pause";
-  elements.focusCountdownTask.textContent = `Focusing on "${task}"`;
-  elements.focusCountdownTime.textContent = formatCountdown(focusTimer.totalSeconds);
-  setNotificationsBlocked(true);
-  setSitesBlocked(true);
   if (settings.stashOnFocus) stashOpenTabs();
-  elements.focusDndIndicator.hidden = !settings.blockNotifications;
-
-  stopFocusTimerInterval();
-  focusTimer.intervalId = setInterval(tickFocusCountdown, 1000);
+  sendFocusMessage({ type: "focus:start", task, minutes });
 }
 
 const syncStorageKey = "momentumSyncedSettings";
@@ -922,16 +834,33 @@ function syncedSettingsSubset() {
   return subset;
 }
 
+let syncTimer = null;
+
+function writeSyncedSettings() {
+  clearTimeout(syncTimer);
+  syncTimer = null;
+  // API keys and history stay on this device; everything else follows the Google account.
+  // A failed sync write (size or rate quota) is harmless: local data carries a newer
+  // updatedAt, so it wins over the stale synced copy on the next load.
+  chrome.storage.sync.set({ [syncStorageKey]: syncedSettingsSubset() }, () => {
+    void chrome.runtime.lastError;
+  });
+}
+
 function save() {
+  settings.updatedAt = Date.now();
   writeStoredValue(storageKey, settings);
 
-  // API keys and history stay on this device; everything else follows the Google account.
   if (typeof chrome !== "undefined" && chrome.storage?.sync) {
-    chrome.storage.sync.set({ [syncStorageKey]: syncedSettingsSubset() }, () => {
-      void chrome.runtime.lastError;
-    });
+    // Batch rapid edits (typing, sliders) to stay under chrome.storage.sync's write quota.
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(writeSyncedSettings, 2000);
   }
 }
+
+window.addEventListener("pagehide", () => {
+  if (syncTimer) writeSyncedSettings();
+});
 
 function readSyncedSettings(callback) {
   if (typeof chrome === "undefined" || !chrome.storage?.sync) {
@@ -947,9 +876,12 @@ function saveAssistant() {
   writeStoredValue(assistantStorageKey, assistantMessages.slice(-40));
 }
 
+let assistantPending = false;
+
 function renderAssistant() {
   elements.assistantMessages.replaceChildren();
-  assistantMessages.forEach((message) => {
+  const shown = assistantPending ? [...assistantMessages, { role: "pending", text: "Thinking…" }] : assistantMessages;
+  shown.forEach((message) => {
     const paragraph = document.createElement("p");
     paragraph.className = `assistant-message ${message.role}`;
     paragraph.textContent = message.text;
@@ -1026,11 +958,16 @@ function buildCoachSystemPrompt() {
   return `You are a warm, concise productivity coach embedded in a browser new-tab dashboard. The user's name is "${settings.name || "unknown"}", their focus for today is "${settings.focus || "not set"}", and their open tasks are: ${openTasks.length ? openTasks.join(", ") : "none"}. Keep replies under 100 words.`;
 }
 
-async function fetchOpenAiCompatibleReply({ endpoint, apiKey, model, message }) {
+// Earlier turns to send as context: only real chat turns, never errors or the message being sent.
+function conversationHistory() {
+  return assistantMessages.filter((entry) => entry.role === "user" || entry.role === "assistant").slice(-8);
+}
+
+async function fetchOpenAiCompatibleReply({ endpoint, apiKey, model, message, previous }) {
   const systemPrompt = buildCoachSystemPrompt();
 
-  const history = assistantMessages.slice(-8).map((entry) => ({
-    role: entry.role === "user" ? "user" : "assistant",
+  const history = previous.map((entry) => ({
+    role: entry.role,
     content: entry.text,
   }));
 
@@ -1058,10 +995,10 @@ async function fetchOpenAiCompatibleReply({ endpoint, apiKey, model, message }) 
   return reply;
 }
 
-async function fetchGeminiReply({ apiKey, model, message }) {
+async function fetchGeminiReply({ apiKey, model, message, previous }) {
   const systemPrompt = buildCoachSystemPrompt();
 
-  const history = assistantMessages.slice(-8).map((entry) => ({
+  const history = previous.map((entry) => ({
     role: entry.role === "user" ? "user" : "model",
     parts: [{ text: entry.text }],
   }));
@@ -1070,10 +1007,11 @@ async function fetchGeminiReply({ apiKey, model, message }) {
   const fallbackModel = "gemini-flash-lite-latest";
 
   async function sendRequest(targetModel) {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent`;
     return fetch(endpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      // A header keeps the key out of URLs, logs and error messages.
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       body: JSON.stringify({
         systemInstruction: { role: "system", parts: [{ text: systemPrompt }] },
         contents: [...history, { role: "user", parts: [{ text: message }] }],
@@ -1107,13 +1045,14 @@ async function fetchGeminiReply({ apiKey, model, message }) {
   return reply;
 }
 
-function fetchAiReply(message) {
+function fetchAiReply(message, previous) {
   if (settings.aiProvider === "chatgpt") {
     return fetchOpenAiCompatibleReply({
       endpoint: "https://api.openai.com/v1/chat/completions",
       apiKey: settings.openaiApiKey,
       model: settings.openaiModel || "gpt-4o-mini",
       message,
+      previous,
     });
   }
   if (settings.aiProvider === "deepseek") {
@@ -1122,6 +1061,7 @@ function fetchAiReply(message) {
       apiKey: settings.deepseekApiKey,
       model: settings.deepseekModel || "deepseek-chat",
       message,
+      previous,
     });
   }
   if (settings.aiProvider === "gemini") {
@@ -1129,12 +1069,14 @@ function fetchAiReply(message) {
       apiKey: settings.geminiApiKey,
       model: settings.geminiModel || "gemini-flash-latest",
       message,
+      previous,
     });
   }
   return Promise.reject(new Error("No online assistant selected."));
 }
 
 async function handleAssistantMessage(message) {
+  const previous = conversationHistory();
   addAssistantMessage("user", message);
 
   if (settings.aiProvider === "offline") {
@@ -1151,15 +1093,15 @@ async function handleAssistantMessage(message) {
     return;
   }
 
-  assistantMessages.push({ role: "pending", text: "Thinking…" });
+  assistantPending = true;
   renderAssistant();
 
   try {
-    const reply = await fetchAiReply(message);
-    assistantMessages.pop();
+    const reply = await fetchAiReply(message, previous);
+    assistantPending = false;
     addAssistantMessage("assistant", reply);
   } catch (error) {
-    assistantMessages.pop();
+    assistantPending = false;
     addAssistantMessage("error", `${providerName} request failed: ${error.message}`);
   }
 }
@@ -1311,7 +1253,7 @@ elements.focusCustomDuration.addEventListener("keydown", (event) => {
 
 elements.focusStart.addEventListener("click", () => startFocusSession());
 elements.focusPause.addEventListener("click", () => togglePauseFocusSession());
-elements.focusStop.addEventListener("click", () => finishFocusSession(false));
+elements.focusStop.addEventListener("click", () => sendFocusMessage({ type: "focus:stop" }));
 
 document.querySelector("#clear-focus-history").addEventListener("click", () => {
   settings.focusHistory = [];
@@ -1336,7 +1278,6 @@ function setBlockSitesEnabled(enable) {
     settings.blockSites = enable;
     save();
     renderBlocker();
-    setSitesBlocked(!elements.focusCountdown.hidden);
   };
   if (enable && typeof chrome !== "undefined" && chrome.permissions?.request) {
     chrome.permissions.request({ origins: ["<all_urls>"] }, (granted) => {
@@ -1381,7 +1322,6 @@ function renderBlocker() {
       toggle.addEventListener("change", () => {
         group.enabled = toggle.checked;
         save();
-        setSitesBlocked(!elements.focusCountdown.hidden);
       });
 
       const expand = document.createElement("button");
@@ -1405,7 +1345,6 @@ function renderBlocker() {
         group.sites = parseBlockedSites(textarea.value);
         save();
         count.textContent = String(group.sites.length);
-        setSitesBlocked(!elements.focusCountdown.hidden);
       });
       const remove = document.createElement("button");
       remove.type = "button";
@@ -1415,7 +1354,6 @@ function renderBlocker() {
         settings.blockGroups = settings.blockGroups.filter((candidate) => candidate !== group);
         save();
         renderBlocker();
-        setSitesBlocked(!elements.focusCountdown.hidden);
       });
       edit.append(textarea, remove);
 
@@ -1473,14 +1411,9 @@ elements.stashClear.addEventListener("click", () => {
 
 elements.blockNotifications.addEventListener("change", () => {
   settings.blockNotifications = elements.blockNotifications.checked;
+  // background.js sees the saved change and blocks or restores notifications.
   save();
-  if (!settings.blockNotifications) {
-    setNotificationsBlocked(false);
-    elements.focusDndIndicator.hidden = true;
-  } else if (!elements.focusCountdown.hidden) {
-    setNotificationsBlocked(true);
-    elements.focusDndIndicator.hidden = false;
-  }
+  renderFocusSession();
 });
 
 document.querySelector("#clear-tasks").addEventListener("click", () => {
@@ -1566,8 +1499,10 @@ elements.soundsToggle.addEventListener("click", () => toggleMusic());
 elements.musicVolume.addEventListener("input", () => {
   settings.musicVolume = Number(elements.musicVolume.value);
   setMusicVolume(settings.musicVolume);
-  save();
 });
+
+// Save once the slider is released rather than on every step of the drag.
+elements.musicVolume.addEventListener("change", () => save());
 
 elements.musicButton.addEventListener("click", () => toggleMusic());
 
@@ -1619,10 +1554,67 @@ document.querySelector("#close-assistant").addEventListener("click", () => {
   elements.assistantButton.hidden = false;
 });
 
+// Fill the form controls from settings, skipping whichever one the user is typing in.
+function applySettingsToUi() {
+  const setValue = (element, value) => {
+    if (document.activeElement !== element) element.value = value;
+  };
+  setValue(elements.focus, settings.focus);
+  setValue(elements.name, settings.name);
+  elements.twentyFourHour.checked = settings.use24Hour;
+  elements.aiProvider.value = settings.aiProvider;
+  setValue(elements.openaiKey, settings.openaiApiKey);
+  elements.openaiModel.value = settings.openaiModel;
+  setValue(elements.deepseekKey, settings.deepseekApiKey);
+  elements.deepseekModel.value = settings.deepseekModel;
+  setValue(elements.geminiKey, settings.geminiApiKey);
+  elements.geminiModel.value = settings.geminiModel;
+  elements.musicVolume.value = settings.musicVolume;
+  elements.musicTrack.value = settings.musicTrack;
+  renderSounds();
+  elements.blockNotifications.checked = settings.blockNotifications;
+  elements.stashOnFocus.checked = settings.stashOnFocus;
+  renderBlocker();
+  setValue(elements.focusCustomDuration, settings.customFocusMinutes || 30);
+  updateAssistantModeLabel();
+  updateAiProviderVisibility();
+  renderClock();
+  renderTasks();
+  renderFocusHistory();
+  renderLinks();
+  renderFocusSession();
+}
+
+// Keep every open dashboard in step with changes from other tabs and the background script.
+function listenForStorageChanges() {
+  if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return;
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local") return;
+    const changedSettings = changes[storageKey]?.newValue;
+    if (changedSettings && (changedSettings.updatedAt || 0) > (settings.updatedAt || 0)) {
+      settings = { ...defaults, ...changedSettings };
+      applySettingsToUi();
+    }
+    if (changes[assistantStorageKey]) {
+      assistantMessages = Array.isArray(changes[assistantStorageKey].newValue) ? changes[assistantStorageKey].newValue : [];
+      renderAssistant();
+    }
+    if (changes[sessionStorageKey]) {
+      focusSession = changes[sessionStorageKey].newValue || null;
+      renderFocusSession();
+    }
+  });
+}
+
 readSyncedSettings((syncedSettings) => {
 readStoredValue(storageKey, (settingsResult) => {
   readStoredValue(assistantStorageKey, (assistantResult) => {
-    const storedSettings = { ...(settingsResult[storageKey] || {}), ...syncedSettings };
+    const localSettings = settingsResult[storageKey];
+    // Synced settings only win when they are newer, e.g. edited on another computer.
+    // An older synced copy (such as one whose write failed on quota) must not
+    // overwrite newer local data.
+    const useSynced = !localSettings || (syncedSettings.updatedAt || 0) > (localSettings.updatedAt || 0);
+    const storedSettings = useSynced ? { ...(localSettings || {}), ...syncedSettings } : localSettings;
     settings = { ...defaults, ...storedSettings };
     assistantMessages = Array.isArray(assistantResult[assistantStorageKey])
       ? assistantResult[assistantStorageKey]
@@ -1652,35 +1644,17 @@ readStoredValue(storageKey, (settingsResult) => {
   }
   delete settings.blockedSites;
   delete settings.useChatGpt;
-  elements.focus.value = settings.focus;
-  elements.name.value = settings.name;
-  elements.twentyFourHour.checked = settings.use24Hour;
-  elements.aiProvider.value = settings.aiProvider;
-  elements.openaiKey.value = settings.openaiApiKey;
-  elements.openaiModel.value = settings.openaiModel;
-  elements.deepseekKey.value = settings.deepseekApiKey;
-  elements.deepseekModel.value = settings.deepseekModel;
-  elements.geminiKey.value = settings.geminiApiKey;
-  elements.geminiModel.value = settings.geminiModel;
-  elements.musicVolume.value = settings.musicVolume;
-  elements.musicTrack.value = settings.musicTrack;
-  renderSounds();
-  elements.blockNotifications.checked = settings.blockNotifications;
-  elements.stashOnFocus.checked = settings.stashOnFocus;
-  renderBlocker();
-  elements.focusCustomDuration.value = settings.customFocusMinutes || 30;
-  updateAssistantModeLabel();
-  updateAiProviderVisibility();
-  renderQuote();
-  renderClock();
-  renderTasks();
-  renderAssistant();
-  renderFocusHistory();
-  renderLinks();
-  if (!assistantMessages.length) {
-    addAssistantMessage("assistant", welcomeMessage());
-  }
-  setInterval(renderClock, 1000);
+  readStoredValue(sessionStorageKey, (sessionResult) => {
+    focusSession = sessionResult[sessionStorageKey] || null;
+    applySettingsToUi();
+    renderQuote();
+    renderAssistant();
+    if (!assistantMessages.length) {
+      addAssistantMessage("assistant", welcomeMessage());
+    }
+    listenForStorageChanges();
+    setInterval(renderClock, 1000);
+  });
   });
 });
 });
@@ -1799,9 +1773,6 @@ setInterval(() => {
   const quote = document.querySelector("#quote");
   if (quote && quote.textContent !== dailyQuote()) renderQuote();
 }, 60000);
-
-// A session never survives a closed tab, so lift any leftover site blocks on load.
-setSitesBlocked(false);
 
 readStoredValue(stashStorageKey, (result) => {
   const stored = result && result[stashStorageKey];

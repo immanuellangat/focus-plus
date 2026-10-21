@@ -7,7 +7,7 @@ document.querySelector("#blocked-back").addEventListener("click", () => {
 });
 
 document.querySelector("#blocked-unblock").addEventListener("click", async () => {
-  const rules = await chrome.declarativeNetRequest.getSessionRules();
-  await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: rules.map((rule) => rule.id) });
+  // The background script remembers this for the rest of the session.
+  await chrome.runtime.sendMessage({ type: "focus:unblock" });
   document.querySelector(".blocked-note").textContent = "Sites unblocked. Go back and reload the page.";
 });

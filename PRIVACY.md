@@ -21,6 +21,7 @@ Focus Plus is a Chrome new-tab extension. It has no account system, no analytics
 ## Permissions
 
 - `storage`: save your settings and tasks.
+- `alarms`: end a focus session on time, even when no new tab page is open.
 - `tabs`: read tab titles and addresses only to stash open tabs when you ask or when a focus session starts.
 - `contentSettings`: block website notifications during focus, if you turn that on.
 - `declarativeNetRequest` and optional access to all sites: redirect sites on your blocked list to a "stay focused" page. Site access is requested only when you turn the blocker on, and the blocked list is never sent anywhere.

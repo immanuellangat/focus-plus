@@ -11,6 +11,7 @@ A new-tab dashboard that helps you focus: daily focus timer, tasks, ambient soun
 ## Permission justifications
 
 - `storage`: saves settings, tasks and focus history.
+- `alarms`: ends a focus session on time and lifts its site and notification blocks, even when no new tab page is open.
 - `tabs`: reads tab titles and addresses to stash open tabs when the user starts a focus session or taps "Stash open tabs now".
 - `contentSettings`: blocks website notifications during focus when the user enables it.
 - `declarativeNetRequest`: redirects sites on the user's blocked list to a local "stay focused" page.
