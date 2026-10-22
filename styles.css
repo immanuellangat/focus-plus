@@ -11,6 +11,11 @@
   box-sizing: border-box;
 }
 
+/* Rules that set display (flex, grid...) would otherwise override the hidden attribute. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   min-width: 320px;
   min-height: 100vh;
@@ -1278,4 +1283,181 @@ input::placeholder {
   .ringing-icon {
     animation: none;
   }
+}
+
+/* Focus cycles */
+
+.cycle-toggle {
+  margin-top: 12px;
+  font-size: 0.82rem;
+}
+
+.focus-phase {
+  margin: 0 0 2px;
+  color: #f0b08f;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.focus-phase.break {
+  color: #8fd6a5;
+}
+
+/* Stats and streaks */
+
+.focus-stats {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.focus-stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 12px;
+  font-size: 0.84rem;
+}
+
+.stats-today {
+  color: var(--muted);
+}
+
+.stats-streak {
+  font-weight: 600;
+}
+
+.goal-bar {
+  overflow: hidden;
+  height: 6px;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 12%);
+}
+
+.goal-bar[hidden] {
+  display: none;
+}
+
+.goal-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: #d18b68;
+  transition: width 400ms ease;
+}
+
+.goal-bar.reached .goal-fill {
+  background: #5fb07a;
+}
+
+.stats-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  height: 64px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stats-week li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 0;
+}
+
+.stats-bar {
+  width: 100%;
+  max-width: 26px;
+  border-radius: 4px 4px 2px 2px;
+  background: rgb(255 255 255 / 28%);
+}
+
+.stats-week li.today .stats-bar {
+  background: #d18b68;
+}
+
+.stats-day {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+/* Focus on a task */
+
+.focus-task {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.72rem;
+}
+
+.focus-task:disabled {
+  opacity: 0.45;
+}
+
+.focus-task[hidden] {
+  display: none;
+}
+
+.todo-item.focusing label {
+  font-weight: 600;
+}
+
+.todo-item.focusing .focus-task {
+  border-color: #d18b68;
+  opacity: 1;
+}
+
+.task-check {
+  top: 76px;
+}
+
+/* Settings: number fields and shortcuts */
+
+.settings-subheading.first {
+  margin-top: 20px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.number-grid {
+  display: grid;
+  grid-template-columns: 1fr 76px;
+  gap: 10px 12px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.settings-panel .number-grid label:not(.toggle) {
+  margin: 0;
+}
+
+.number-grid input[type="number"] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 8%);
+  color: var(--text);
+  text-align: center;
+}
+
+kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgb(255 255 255 / 8%);
+  font-family: inherit;
+  font-size: 0.85em;
 }

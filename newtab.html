@@ -117,15 +117,32 @@
           />
           <button id="focus-start" class="secondary-button" type="button">Start focus</button>
         </div>
+        <label class="toggle cycle-toggle">
+          <input class="cycles-toggle" type="checkbox" />
+          <span id="cycle-summary">Repeat with breaks</span>
+        </label>
 
         <div id="focus-countdown" class="focus-countdown" hidden>
+          <p id="focus-phase" class="focus-phase"></p>
           <p id="focus-countdown-time" class="focus-countdown-time" aria-live="polite">25:00</p>
           <p id="focus-countdown-task" class="focus-countdown-task"></p>
           <p id="focus-dnd-indicator" class="focus-dnd-indicator" hidden>🔕 Notifications paused</p>
           <div class="focus-countdown-actions">
             <button id="focus-pause" class="secondary-button" type="button">Pause</button>
+            <button id="focus-skip" class="secondary-button" type="button" hidden>Skip break</button>
             <button id="focus-stop" class="secondary-button" type="button">Stop session</button>
           </div>
+        </div>
+
+        <div id="focus-stats" class="focus-stats">
+          <div class="focus-stats-row">
+            <span id="stats-today" class="stats-today"></span>
+            <span id="stats-streak" class="stats-streak"></span>
+          </div>
+          <div id="goal-bar" class="goal-bar" role="progressbar" aria-label="Daily focus goal" aria-valuemin="0">
+            <span id="goal-fill" class="goal-fill"></span>
+          </div>
+          <ol id="stats-week" class="stats-week" aria-label="Focus minutes, last 7 days"></ol>
         </div>
 
         <div class="focus-history-header">
@@ -159,6 +176,13 @@
       <span id="ringing-label" class="ringing-label"></span>
       <button id="ringing-snooze" class="ringing-button" type="button">Snooze 5 min</button>
       <button id="ringing-stop" class="ringing-button primary" type="button">Stop</button>
+    </div>
+
+    <div id="task-check" class="ringing-banner task-check" role="dialog" aria-labelledby="task-check-label" hidden>
+      <span aria-hidden="true">✅</span>
+      <span id="task-check-label" class="ringing-label"></span>
+      <button id="task-check-dismiss" class="ringing-button" type="button">Not yet</button>
+      <button id="task-check-done" class="ringing-button primary" type="button">Mark done</button>
     </div>
 
     <button id="assistant-button" class="assistant-button" type="button" aria-label="Open Focus assistant">
@@ -211,6 +235,39 @@
       </div>
 
       <div id="settings-tab-focus" class="settings-tab-panel" role="tabpanel" hidden>
+        <h3 class="settings-subheading first">Focus cycles</h3>
+        <label class="toggle">
+          <input class="cycles-toggle" type="checkbox" />
+          <span>Repeat focus with breaks</span>
+        </label>
+        <div class="number-grid">
+          <label for="break-minutes">Short break (min)</label>
+          <input id="break-minutes" type="number" min="1" max="60" />
+          <label for="long-break-minutes">Long break (min)</label>
+          <input id="long-break-minutes" type="number" min="1" max="120" />
+          <label for="rounds-before-long">Long break every (rounds)</label>
+          <input id="rounds-before-long" type="number" min="2" max="12" />
+        </div>
+        <label class="toggle">
+          <input id="auto-start-focus" type="checkbox" />
+          <span>Start the next focus round automatically after a break</span>
+        </label>
+
+        <h3 class="settings-subheading">Daily goal</h3>
+        <div class="number-grid">
+          <label for="daily-goal">Focus minutes per day (0 hides the goal)</label>
+          <input id="daily-goal" type="number" min="0" max="720" step="5" />
+        </div>
+
+        <h3 class="settings-subheading">Keyboard shortcuts</h3>
+        <p class="settings-note">
+          <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> starts, pauses or resumes a focus session from any page,
+          and <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> stops it. The Focus Plus icon in the toolbar shows the
+          minutes left and has the same controls.
+        </p>
+        <button id="open-shortcuts" class="secondary-button" type="button">Change shortcuts</button>
+
+        <h3 class="settings-subheading">During focus</h3>
         <label class="toggle">
           <input id="block-notifications" type="checkbox" checked />
           <span>Block browser notifications while focusing</span>
@@ -361,6 +418,7 @@
     </aside>
     <div id="settings-backdrop" class="backdrop" hidden></div>
 
+    <script src="stats.js"></script>
     <script src="newtab.js"></script>
   </body>
 </html>

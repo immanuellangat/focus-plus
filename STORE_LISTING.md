@@ -6,7 +6,7 @@ Copy these into the Developer Dashboard when you submit.
 
 ## Single purpose
 
-A new-tab dashboard that helps you focus: daily focus timer, tasks, ambient sounds, a site blocker and an optional AI focus coach.
+A new-tab dashboard that helps you focus: a focus timer with breaks, stats and streaks, tasks, alarms, ambient sounds, a site blocker and an optional AI focus coach. The toolbar icon shows the time left and controls the timer from any page.
 
 ## Permission justifications
 

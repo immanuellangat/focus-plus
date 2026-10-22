@@ -5,6 +5,8 @@ const storageKey = "momentumSettings";
 const sessionKey = "momentumSession";
 const assistantStorageKey = "momentumAssistant";
 const ringingKey = "momentumRinging";
+const taskCheckKey = "momentumTaskCheck";
+const badgeAlarmName = "badge-tick";
 const alarmName = "focus-end";
 const clockAlarmPrefix = "clock-";
 const snoozePrefix = "snooze-";
@@ -57,11 +59,19 @@ function setNotifications(blocked) {
   });
 }
 
+async function appendAssistantMessage(text) {
+  const messages = (await getStored(assistantStorageKey)) || [];
+  messages.push({ role: "assistant", text });
+  await chrome.storage.local.set({ [assistantStorageKey]: messages.slice(-40) });
+}
+
 // Bring site and notification blocking in line with the current settings and session.
+// Blocking only applies while focusing; breaks are free.
 async function applyBlocks() {
   const [settings = {}, session] = await Promise.all([getStored(storageKey), getStored(sessionKey)]);
+  const focusing = Boolean(session) && (session.phase || "focus") === "focus";
   const groups = Array.isArray(settings.blockGroups) ? settings.blockGroups : [];
-  const domains = session && settings.blockSites && !session.sitesUnblocked
+  const domains = focusing && settings.blockSites && !session.sitesUnblocked
     ? parseBlockedSites(groups.filter((group) => group.enabled).flatMap((group) => group.sites || []).join("\n"))
     : [];
   await chrome.declarativeNetRequest.updateSessionRules({
@@ -75,28 +85,87 @@ async function applyBlocks() {
         }]
       : [],
   }).catch(() => {});
-  await setNotifications(Boolean(session) && settings.blockNotifications !== false);
+  await setNotifications(focusing && settings.blockNotifications !== false);
 }
 
-async function appendAssistantMessage(text) {
-  const messages = (await getStored(assistantStorageKey)) || [];
-  messages.push({ role: "assistant", text });
-  await chrome.storage.local.set({ [assistantStorageKey]: messages.slice(-40) });
+// --- Toolbar badge: minutes left on the extension icon
+
+const badgeColors = { focus: "#c8643f", break: "#3f8f5a" };
+
+async function updateBadge() {
+  const session = await getStored(sessionKey);
+  if (!session) {
+    await chrome.action.setBadgeText({ text: "" });
+    await chrome.action.setTitle({ title: "Focus Plus" });
+    await chrome.alarms.clear(badgeAlarmName);
+    return;
+  }
+  const remaining = remainingSeconds(session);
+  const minutes = Math.ceil(remaining / 60);
+  const isBreak = session.phase && session.phase !== "focus";
+  let text = remaining < 60 ? "<1" : String(minutes);
+  if (session.paused) text = "❚❚";
+  await chrome.action.setBadgeBackgroundColor({ color: isBreak ? badgeColors.break : badgeColors.focus });
+  await chrome.action.setBadgeTextColor?.({ color: "#ffffff" });
+  await chrome.action.setBadgeText({ text });
+  const what = isBreak ? "Break" : `Focus: ${session.task}`;
+  await chrome.action.setTitle({ title: `${what} · ${session.paused ? "paused" : `${minutes} min left`}` });
+  if (session.paused) {
+    await chrome.alarms.clear(badgeAlarmName);
+  } else if (!(await chrome.alarms.get(badgeAlarmName))) {
+    await chrome.alarms.create(badgeAlarmName, { periodInMinutes: 0.5 });
+  }
 }
 
-async function startSession({ task, minutes }) {
-  const totalSeconds = Math.round(minutes * 60);
+// --- Focus sessions and focus/break cycles
+
+function clampNumber(value, fallback, min, max) {
+  const number = Math.round(Number(value));
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+function cycleSettings(settings) {
+  return {
+    enabled: Boolean(settings.cyclesEnabled),
+    breakMinutes: clampNumber(settings.breakMinutes, 5, 1, 60),
+    longBreakMinutes: clampNumber(settings.longBreakMinutes, 15, 1, 120),
+    rounds: clampNumber(settings.roundsBeforeLongBreak, 4, 2, 12),
+    autoStartFocus: settings.autoStartFocus !== false,
+  };
+}
+
+function notify(id, title, message, buttons) {
+  chrome.notifications.create(id, {
+    type: "basic",
+    iconUrl: "icons/icon128.png",
+    title,
+    message,
+    ...(buttons ? { buttons } : {}),
+  }, () => void chrome.runtime.lastError);
+}
+
+// Start one phase (a focus round or a break) of the current session.
+async function startPhase(fields) {
+  const totalSeconds = Math.round(fields.minutes * 60);
   const session = {
     id: crypto.randomUUID(),
-    task,
+    phase: "focus",
+    round: 1,
+    ...fields,
     totalSeconds,
     endTime: Date.now() + totalSeconds * 1000,
     paused: false,
     remainingSeconds: totalSeconds,
   };
+  delete session.minutes;
   await chrome.storage.local.set({ [sessionKey]: session });
   await chrome.alarms.create(alarmName, { when: session.endTime });
   await applyBlocks();
+  await updateBadge();
+}
+
+async function startSession({ task, minutes, taskId }) {
+  await startPhase({ task, taskId: taskId || null, focusMinutes: minutes, minutes, phase: "focus", round: 1 });
 }
 
 async function pauseSession() {
@@ -106,6 +175,7 @@ async function pauseSession() {
   await chrome.storage.local.set({
     [sessionKey]: { ...session, paused: true, remainingSeconds: remainingSeconds(session) },
   });
+  await updateBadge();
 }
 
 async function resumeSession() {
@@ -114,14 +184,17 @@ async function resumeSession() {
   const endTime = Date.now() + session.remainingSeconds * 1000;
   await chrome.storage.local.set({ [sessionKey]: { ...session, paused: false, endTime } });
   await chrome.alarms.create(alarmName, { when: endTime });
+  await updateBadge();
 }
 
-async function endSession(completed) {
-  const session = await getStored(sessionKey);
-  if (!session) return;
-  const remaining = remainingSeconds(session);
-  if (completed && remaining > 1) return;
+async function clearSession() {
+  await chrome.storage.local.remove(sessionKey);
+  await chrome.alarms.clear(alarmName);
+  await applyBlocks();
+  await updateBadge();
+}
 
+async function recordFocus(session, completed, remaining) {
   const settings = (await getStored(storageKey)) || {};
   const history = Array.isArray(settings.focusHistory) ? settings.focusHistory : [];
   history.push({
@@ -131,23 +204,128 @@ async function endSession(completed) {
     completed,
     timestamp: new Date().toISOString(),
   });
-  await chrome.storage.local.set({ [storageKey]: { ...settings, focusHistory: history, updatedAt: Math.max(Date.now(), (settings.updatedAt || 0) + 1) } });
-  await chrome.storage.local.remove(sessionKey);
-  await chrome.alarms.clear(alarmName);
-  if (completed) {
-    const minutes = Math.round(session.totalSeconds / 60);
-    await appendAssistantMessage(`Nice work! You finished a ${minutes}-minute focus session on "${session.task}".`);
-    if (settings.notifyOnComplete !== false) {
-      chrome.notifications.create(`focus-done-${session.id}`, {
-        type: "basic",
-        iconUrl: "icons/icon128.png",
-        title: "Focus session complete",
-        message: `${minutes} minutes on "${session.task}". Time for a short break.`,
-      }, () => void chrome.runtime.lastError);
+  await chrome.storage.local.set({
+    [storageKey]: { ...settings, focusHistory: history, updatedAt: Math.max(Date.now(), (settings.updatedAt || 0) + 1) },
+  });
+  return settings;
+}
+
+// `completed` is true when the timer ran out, false when the user stopped it.
+async function endSession(completed) {
+  const session = await getStored(sessionKey);
+  if (!session) return;
+  const remaining = remainingSeconds(session);
+  if (completed && remaining > 1) return;
+
+  const phase = session.phase || "focus";
+  if (phase !== "focus") {
+    // A break ended (or was cut short).
+    const settings = (await getStored(storageKey)) || {};
+    const cycles = cycleSettings(settings);
+    if (completed && cycles.enabled && cycles.autoStartFocus) {
+      await startPhase({ ...nextFocusFields(session), minutes: session.focusMinutes });
+      if (settings.notifyOnComplete !== false) {
+        notify(`focus-phase-${session.id}`, "Back to focus", `Round ${session.round + 1} on "${session.task}".`);
+      }
+      await playSound(settings.focusEndSound ?? "chime", 2);
+      return;
     }
-    await playSound(settings.focusEndSound ?? "chime", 4);
+    await clearSession();
+    if (completed) {
+      if (settings.notifyOnComplete !== false) {
+        notify(`focus-phase-${session.id}`, "Break's over", `Start your next round on "${session.task}" when you're ready.`);
+      }
+      await playSound(settings.focusEndSound ?? "chime", 2);
+    }
+    return;
   }
-  await applyBlocks();
+
+  const settings = await recordFocus(session, completed, remaining);
+  if (!completed) {
+    await clearSession();
+    return;
+  }
+
+  const minutes = Math.round(session.totalSeconds / 60);
+  await appendAssistantMessage(`Nice work! You finished a ${minutes}-minute focus session on "${session.task}".`);
+  const openTask = session.taskId && (settings.tasks || []).find((task) => task.id === session.taskId && !task.completed);
+  if (openTask) await chrome.storage.local.set({ [taskCheckKey]: { taskId: openTask.id, text: openTask.text } });
+
+  const cycles = cycleSettings(settings);
+  let message = `${minutes} minutes on "${session.task}". Time for a short break.`;
+  if (cycles.enabled) {
+    const longBreak = session.round % cycles.rounds === 0;
+    const breakMinutes = longBreak ? cycles.longBreakMinutes : cycles.breakMinutes;
+    await startPhase({
+      task: session.task,
+      taskId: session.taskId,
+      focusMinutes: session.focusMinutes,
+      round: session.round,
+      phase: longBreak ? "longBreak" : "break",
+      minutes: breakMinutes,
+    });
+    message = `${minutes} minutes on "${session.task}". Take a ${breakMinutes}-minute ${longBreak ? "long " : ""}break.`;
+  } else {
+    await clearSession();
+  }
+  if (settings.notifyOnComplete !== false) {
+    notify(
+      `focus-done-${session.id}`,
+      cycles.enabled ? `Round ${session.round} done` : "Focus session complete",
+      message,
+      openTask ? [{ title: "Mark task done" }] : undefined,
+    );
+  }
+  await playSound(settings.focusEndSound ?? "chime", 4);
+}
+
+function nextFocusFields(session) {
+  return {
+    task: session.task,
+    taskId: session.taskId,
+    focusMinutes: session.focusMinutes,
+    phase: "focus",
+    round: session.round + 1,
+  };
+}
+
+// End a break early and start the next focus round now.
+async function skipBreak() {
+  const session = await getStored(sessionKey);
+  if (!session || (session.phase || "focus") === "focus") return;
+  await startPhase({ ...nextFocusFields(session), minutes: session.focusMinutes });
+}
+
+async function markTaskDone(taskId) {
+  const settings = (await getStored(storageKey)) || {};
+  const tasks = Array.isArray(settings.tasks) ? settings.tasks : [];
+  if (tasks.some((task) => task.id === taskId)) {
+    await chrome.storage.local.set({
+      [storageKey]: {
+        ...settings,
+        tasks: tasks.map((task) => (task.id === taskId ? { ...task, completed: true } : task)),
+        updatedAt: Math.max(Date.now(), (settings.updatedAt || 0) + 1),
+      },
+    });
+  }
+  const check = await getStored(taskCheckKey);
+  if (check?.taskId === taskId) await chrome.storage.local.remove(taskCheckKey);
+}
+
+// Keyboard shortcuts (see "commands" in manifest.json).
+async function runCommand(command) {
+  const session = await getStored(sessionKey);
+  if (command === "toggle-focus") {
+    if (!session) {
+      const settings = (await getStored(storageKey)) || {};
+      await startSession({ task: settings.focus || "Untitled focus", minutes: clampNumber(settings.focusMinutes, 25, 1, 720) });
+    } else if (session.paused) {
+      await resumeSession();
+    } else {
+      await pauseSession();
+    }
+  }
+  if (command === "stop-focus" && session) await endSession(false);
 }
 
 async function unblockSites() {
@@ -167,6 +345,7 @@ async function reconcile() {
     await chrome.alarms.create(alarmName, { when: session.endTime });
   }
   await applyBlocks();
+  await updateBadge();
 }
 
 // --- Sounds (played by offscreen.html, since a service worker has no audio)
@@ -304,6 +483,8 @@ const handlers = {
   "focus:stop": () => endSession(false),
   "focus:complete": () => endSession(true),
   "focus:unblock": unblockSites,
+  "focus:skipBreak": skipBreak,
+  "task:done": ({ taskId }) => markTaskDone(taskId),
   "alarm:stop": () => stopAlarm(),
   "alarm:snooze": () => snoozeAlarm(),
   "sound:preview": ({ sound }) => playSound(sound, 2.5),
@@ -319,6 +500,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === alarmName) serial(() => endSession(true));
+  if (alarm.name === badgeAlarmName) serial(updateBadge);
   if (alarm.name.startsWith(clockAlarmPrefix)) {
     serial(() => onClockAlarm(alarm.name.slice(clockAlarmPrefix.length), alarm.scheduledTime, false));
   }
@@ -345,6 +527,15 @@ chrome.notifications.onClicked.addListener((id) => {
 });
 
 chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => {
+  if (id.startsWith("focus-done-")) {
+    // The only button on a finished-session notification is "Mark task done".
+    chrome.notifications.clear(id);
+    serial(async () => {
+      const check = await getStored(taskCheckKey);
+      if (check) await markTaskDone(check.taskId);
+    });
+    return;
+  }
   if (!id.startsWith("alarm-")) return;
   const alarmId = id.slice("alarm-".length);
   serial(() => (buttonIndex === 0 ? stopAlarm(alarmId) : snoozeAlarm(alarmId)));
@@ -353,6 +544,8 @@ chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => {
 chrome.notifications.onClosed.addListener((id, byUser) => {
   if (id.startsWith("alarm-") && byUser) serial(() => stopAlarm(id.slice("alarm-".length)));
 });
+
+chrome.commands.onCommand.addListener((command) => serial(() => runCommand(command)));
 
 chrome.runtime.onStartup.addListener(() => serial(reconcile));
 chrome.runtime.onInstalled.addListener(() => serial(reconcile));

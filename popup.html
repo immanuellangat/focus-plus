@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Focus Plus</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="popup-header">
+      <h1>Focus Plus</h1>
+      <p id="popup-stats" class="popup-stats"></p>
+    </header>
+
+    <section id="popup-idle">
+      <label for="popup-task">What are you focusing on?</label>
+      <input id="popup-task" type="text" maxlength="120" list="popup-task-list" placeholder="Make today count" />
+      <datalist id="popup-task-list"></datalist>
+      <div class="popup-row">
+        <select id="popup-minutes" aria-label="Focus length">
+          <option value="5">5 min</option>
+          <option value="15">15 min</option>
+          <option value="25">25 min</option>
+          <option value="45">45 min</option>
+          <option value="60">60 min</option>
+          <option value="90">90 min</option>
+        </select>
+        <label class="popup-check">
+          <input id="popup-cycles" type="checkbox" />
+          <span>Breaks</span>
+        </label>
+      </div>
+      <button id="popup-start" class="popup-primary" type="button">Start focus</button>
+    </section>
+
+    <section id="popup-running" hidden>
+      <p id="popup-phase" class="popup-phase"></p>
+      <p id="popup-time" class="popup-time" aria-live="polite"></p>
+      <p id="popup-task-name" class="popup-task-name"></p>
+      <div class="popup-row">
+        <button id="popup-pause" type="button">Pause</button>
+        <button id="popup-skip" type="button" hidden>Skip break</button>
+        <button id="popup-stop" type="button">Stop</button>
+      </div>
+    </section>
+
+    <footer class="popup-footer">
+      <button id="popup-open" class="popup-link" type="button">Open dashboard</button>
+      <span class="popup-keys">Alt+Shift+F start/pause · Alt+Shift+S stop</span>
+    </footer>
+
+    <script src="stats.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

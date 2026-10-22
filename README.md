@@ -6,8 +6,11 @@ by the calm dashboard experience of Momentum.
 ## Features
 
 - Clock, greeting, daily quote and rotating nature backgrounds.
-- Focus timer with pause, stop and session history.
-- Tasks and quick links.
+- Focus timer with pause, stop, session history and Pomodoro-style focus/break cycles.
+- Toolbar countdown, quick-control popup and keyboard shortcuts.
+- Daily stats, 7-day chart, streaks and a daily goal.
+- Alarm clock.
+- Tasks (start a focus session from any task) and quick links.
 - Ambient sounds, plus YouTube and Spotify players.
 - Site blocker and notification silencing during focus sessions.
 - Tab stash.
@@ -99,6 +102,26 @@ group. The master switch at the top of the panel (also in the **Focus** tab in *
 on or off, and Chrome asks for extra permission the first time you enable it. While a focus session is
 running, sites in the enabled groups and their subdomains show a "stay focused" page; the block lifts when
 the session ends or is stopped, and that page has an **Unblock sites** button as an escape hatch.
+
+**Focus cycles.** Tick **Repeat with breaks** under the focus timer (or in the **Focus** tab of
+**Settings**) to run Pomodoro-style cycles: each finished focus round is followed by a short break,
+and every few rounds by a long one (5 min, 15 min and every 4 rounds by default; all adjustable). The next
+round starts by itself after a break unless you turn that off. Site and notification blocking pause during
+breaks. **Skip break** starts the next round straight away; **Stop session** ends the cycle.
+
+**Toolbar and shortcuts.** The Focus Plus icon in Chrome's toolbar shows the minutes left (orange while
+focusing, green on a break, ❚❚ when paused). Click it for a small panel to start, pause, stop or skip a
+break from any page, with today's minutes and your streak. <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>
+starts a session with your last focus and length, or pauses and resumes it, and
+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> stops it. Change the keys at `chrome://extensions/shortcuts`.
+
+**Stats and streaks.** The focus card shows today's focus time, the last 7 days, a bar for each day, your
+streak (days in a row with at least one finished session; today doesn't break it until it's over) and a
+daily goal bar (120 minutes by default; set it, or 0 to hide it, in the **Focus** tab of **Settings**).
+
+**Focus on a task.** Each open task has a ▶ button that starts a focus session on it (typing an open task's
+exact name as your focus links it too). When the session finishes, the dashboard and the notification ask
+whether the task is done, and **Mark done** ticks it off.
 
 The **Alarms** tab in **Settings** is an alarm clock. Add a time, an optional label and how often it
 repeats (once, every day or weekdays). When an alarm goes off, it rings with the sound you pick and shows

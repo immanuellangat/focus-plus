@@ -93,6 +93,13 @@ const defaults = {
   alarmSound: "bell",
   focusEndSound: "chime",
   alarmVolume: 70,
+  focusMinutes: 25,
+  cyclesEnabled: false,
+  breakMinutes: 5,
+  longBreakMinutes: 15,
+  roundsBeforeLongBreak: 4,
+  autoStartFocus: true,
+  dailyGoalMinutes: 120,
   blockGroups: [
     { id: "social", emoji: "📱", name: "Social Media", enabled: true, sites: ["facebook.com", "instagram.com", "x.com", "twitter.com", "tiktok.com", "snapchat.com", "reddit.com", "pinterest.com", "linkedin.com", "threads.net", "tumblr.com"] },
     { id: "entertainment", emoji: "🎬", name: "Entertainment", enabled: true, sites: ["youtube.com", "netflix.com", "twitch.tv", "hulu.com", "disneyplus.com", "primevideo.com", "spotify.com", "9gag.com"] },
@@ -228,6 +235,23 @@ const elements = {
   ringingLabel: document.querySelector("#ringing-label"),
   ringingStop: document.querySelector("#ringing-stop"),
   ringingSnooze: document.querySelector("#ringing-snooze"),
+  focusPhase: document.querySelector("#focus-phase"),
+  focusSkip: document.querySelector("#focus-skip"),
+  cycleSummary: document.querySelector("#cycle-summary"),
+  breakMinutes: document.querySelector("#break-minutes"),
+  longBreakMinutes: document.querySelector("#long-break-minutes"),
+  roundsBeforeLong: document.querySelector("#rounds-before-long"),
+  autoStartFocus: document.querySelector("#auto-start-focus"),
+  dailyGoal: document.querySelector("#daily-goal"),
+  statsToday: document.querySelector("#stats-today"),
+  statsStreak: document.querySelector("#stats-streak"),
+  goalBar: document.querySelector("#goal-bar"),
+  goalFill: document.querySelector("#goal-fill"),
+  statsWeek: document.querySelector("#stats-week"),
+  taskCheck: document.querySelector("#task-check"),
+  taskCheckLabel: document.querySelector("#task-check-label"),
+  taskCheckDone: document.querySelector("#task-check-done"),
+  taskCheckDismiss: document.querySelector("#task-check-dismiss"),
   linksDropdown: document.querySelector("#links-dropdown"),
 };
 
@@ -760,6 +784,31 @@ function renderAlarms() {
   renderNextAlarm();
 }
 
+const taskCheckStorageKey = "momentumTaskCheck";
+
+function renderTaskCheck(check) {
+  const task = check && settings.tasks.find((item) => item.id === check.taskId && !item.completed);
+  elements.taskCheck.hidden = !task;
+  elements.taskCheck.dataset.taskId = task ? task.id : "";
+  if (task) elements.taskCheckLabel.textContent = `Done with "${task.text}"?`;
+}
+
+function clearTaskCheck() {
+  if (typeof chrome !== "undefined" && chrome.storage?.local) chrome.storage.local.remove(taskCheckStorageKey);
+  elements.taskCheck.hidden = true;
+}
+
+elements.taskCheckDone.addEventListener("click", () => {
+  const task = settings.tasks.find((item) => item.id === elements.taskCheck.dataset.taskId);
+  if (task) {
+    task.completed = true;
+    save();
+    renderTasks();
+  }
+  clearTaskCheck();
+});
+elements.taskCheckDismiss.addEventListener("click", clearTaskCheck);
+
 function renderRinging(ringing) {
   elements.ringingBanner.hidden = !ringing;
   if (ringing) elements.ringingLabel.textContent = `${ringing.label} · ${formatAlarmTime(timeOfDay(ringing.time))}`;
@@ -823,7 +872,40 @@ function formatHistoryTimestamp(isoString) {
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+function renderStats() {
+  const stats = focusStats(settings.focusHistory);
+  elements.statsToday.textContent = `Today ${formatMinutes(stats.todayMinutes)} · Last 7 days ${formatMinutes(stats.weekMinutes)}`;
+  elements.statsStreak.textContent = stats.streak ? `🔥 ${stats.streak}-day streak` : "";
+  const goal = Number(settings.dailyGoalMinutes) || 0;
+  elements.goalBar.hidden = goal <= 0;
+  if (goal > 0) {
+    const percent = Math.min(100, Math.round((stats.todayMinutes / goal) * 100));
+    elements.goalFill.style.width = `${percent}%`;
+    elements.goalBar.classList.toggle("reached", stats.todayMinutes >= goal);
+    elements.goalBar.setAttribute("aria-valuemax", String(goal));
+    elements.goalBar.setAttribute("aria-valuenow", String(Math.min(goal, stats.todayMinutes)));
+    elements.goalBar.title = `${stats.todayMinutes} of ${goal} minutes today`;
+  }
+  const busiest = Math.max(30, ...stats.days.map((day) => day.minutes));
+  elements.statsWeek.replaceChildren(
+    ...stats.days.map((day, index) => {
+      const item = document.createElement("li");
+      item.className = index === 6 ? "today" : "";
+      item.title = `${day.date.toLocaleDateString([], { weekday: "long" })}: ${formatMinutes(day.minutes)}`;
+      const bar = document.createElement("span");
+      bar.className = "stats-bar";
+      bar.style.height = `${Math.max(day.minutes ? 8 : 3, Math.round((day.minutes / busiest) * 100))}%`;
+      const label = document.createElement("span");
+      label.className = "stats-day";
+      label.textContent = day.label;
+      item.append(bar, label);
+      return item;
+    }),
+  );
+}
+
 function renderFocusHistory() {
+  renderStats();
   elements.focusHistoryList.replaceChildren();
 
   if (!settings.focusHistory.length) {
@@ -881,7 +963,9 @@ function renderFocusSession() {
   elements.focus.disabled = running;
   elements.focusDuration.disabled = running;
   elements.focusCustomDuration.disabled = running;
-  elements.focusDndIndicator.hidden = !(running && settings.blockNotifications);
+  const phase = focusSession?.phase || "focus";
+  const isBreak = running && phase !== "focus";
+  elements.focusDndIndicator.hidden = !(running && !isBreak && settings.blockNotifications);
 
   if (!running) {
     clearInterval(focusTickId);
@@ -891,9 +975,18 @@ function renderFocusSession() {
   }
 
   elements.focusPause.textContent = focusSession.paused ? "Resume" : "Pause";
-  elements.focusCountdownTask.textContent = `Focusing on "${focusSession.task}"`;
+  elements.focusSkip.hidden = !isBreak;
+  elements.focusPhase.textContent = phaseLabel(focusSession);
+  elements.focusPhase.classList.toggle("break", isBreak);
+  elements.focusCountdownTask.textContent = isBreak ? `Next: "${focusSession.task}"` : `Focusing on "${focusSession.task}"`;
   tickFocusCountdown();
   if (!focusTickId) focusTickId = setInterval(tickFocusCountdown, 1000);
+}
+
+function phaseLabel(session) {
+  if (session.phase === "break") return "Short break";
+  if (session.phase === "longBreak") return "Long break";
+  return settings.cyclesEnabled ? `Focus · round ${session.round || 1}` : "Focus";
 }
 
 function togglePauseFocusSession() {
@@ -946,7 +1039,7 @@ function restoreStashedTabs() {
   renderStash();
 }
 
-function startFocusSession() {
+function startFocusSession(taskId) {
   const task = elements.focus.value.trim() || "Untitled focus";
   let minutes = 25;
   if (elements.focusDuration.value === "custom") {
@@ -967,10 +1060,19 @@ function startFocusSession() {
     return;
   }
 
+  // Typing the name of an open task links the session to it too.
+  const linkedId = taskId || settings.tasks.find((item) => !item.completed && item.text === task)?.id;
   settings.focus = task;
+  settings.focusMinutes = minutes;
   save();
   if (settings.stashOnFocus) stashOpenTabs();
-  sendFocusMessage({ type: "focus:start", task, minutes });
+  sendFocusMessage({ type: "focus:start", task, minutes, taskId: linkedId });
+}
+
+function startFocusFromTask(task) {
+  if (focusSession) return;
+  elements.focus.value = task.text;
+  startFocusSession(task.id);
 }
 
 const syncStorageKey = "momentumSyncedSettings";
@@ -1327,7 +1429,19 @@ function renderTasks() {
       renderTasks();
     });
 
-    item.append(checkbox, label, deleteButton);
+    const focusing = focusSession?.taskId === task.id;
+    if (focusing) item.classList.add("focusing");
+    const playButton = document.createElement("button");
+    playButton.type = "button";
+    playButton.className = "focus-task";
+    playButton.textContent = focusing ? "🎯" : "▶";
+    playButton.hidden = task.completed;
+    playButton.disabled = Boolean(focusSession);
+    playButton.title = focusing ? "Focusing on this task" : "Start a focus session on this task";
+    playButton.setAttribute("aria-label", focusing ? `Focusing on ${task.text}` : `Focus on ${task.text}`);
+    playButton.addEventListener("click", () => startFocusFromTask(task));
+
+    item.append(checkbox, label, playButton, deleteButton);
     elements.list.append(item);
   });
 }
@@ -1440,6 +1554,7 @@ elements.focusCustomDuration.addEventListener("keydown", (event) => {
 });
 
 elements.focusStart.addEventListener("click", () => startFocusSession());
+elements.focusSkip.addEventListener("click", () => sendFocusMessage({ type: "focus:skipBreak" }));
 elements.focusPause.addEventListener("click", () => togglePauseFocusSession());
 elements.focusStop.addEventListener("click", () => sendFocusMessage({ type: "focus:stop" }));
 
@@ -1588,6 +1703,45 @@ document.addEventListener("click", (event) => {
 elements.stashOnFocus.addEventListener("change", () => {
   settings.stashOnFocus = elements.stashOnFocus.checked;
   save();
+});
+
+function cycleSummaryText() {
+  return `Repeat with breaks (${settings.breakMinutes} min, long break every ${settings.roundsBeforeLongBreak})`;
+}
+
+document.querySelectorAll(".cycles-toggle").forEach((toggle) => {
+  toggle.addEventListener("change", () => {
+    settings.cyclesEnabled = toggle.checked;
+    document.querySelectorAll(".cycles-toggle").forEach((other) => {
+      other.checked = settings.cyclesEnabled;
+    });
+    save();
+  });
+});
+
+[
+  [elements.breakMinutes, "breakMinutes", 1, 60],
+  [elements.longBreakMinutes, "longBreakMinutes", 1, 120],
+  [elements.roundsBeforeLong, "roundsBeforeLongBreak", 2, 12],
+  [elements.dailyGoal, "dailyGoalMinutes", 0, 720],
+].forEach(([input, key, min, max]) => {
+  input.addEventListener("change", () => {
+    const value = Math.round(Number(input.value));
+    settings[key] = Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : defaults[key];
+    input.value = settings[key];
+    save();
+    elements.cycleSummary.textContent = cycleSummaryText();
+    renderStats();
+  });
+});
+
+elements.autoStartFocus.addEventListener("change", () => {
+  settings.autoStartFocus = elements.autoStartFocus.checked;
+  save();
+});
+
+document.querySelector("#open-shortcuts").addEventListener("click", () => {
+  if (typeof chrome !== "undefined" && chrome.tabs?.create) chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
 });
 
 elements.notifyOnComplete.addEventListener("change", () => {
@@ -1781,6 +1935,21 @@ function applySettingsToUi() {
   elements.focusEndSound.value = settings.focusEndSound;
   elements.alarmVolume.value = settings.alarmVolume;
   renderAlarms();
+  document.querySelectorAll(".cycles-toggle").forEach((toggle) => {
+    toggle.checked = Boolean(settings.cyclesEnabled);
+  });
+  setValue(elements.breakMinutes, settings.breakMinutes);
+  setValue(elements.longBreakMinutes, settings.longBreakMinutes);
+  setValue(elements.roundsBeforeLong, settings.roundsBeforeLongBreak);
+  setValue(elements.dailyGoal, settings.dailyGoalMinutes);
+  elements.autoStartFocus.checked = settings.autoStartFocus;
+  elements.cycleSummary.textContent = cycleSummaryText();
+  if (!focusSession && document.activeElement !== elements.focusDuration) {
+    const preset = [...elements.focusDuration.options].some((option) => option.value === String(settings.focusMinutes));
+    elements.focusDuration.value = preset ? String(settings.focusMinutes) : "custom";
+    elements.focusCustomDuration.hidden = preset;
+    if (!preset) setValue(elements.focusCustomDuration, settings.focusMinutes);
+  }
   renderBlocker();
   setValue(elements.focusCustomDuration, settings.customFocusMinutes || 30);
   updateAssistantModeLabel();
@@ -1807,9 +1976,11 @@ function listenForStorageChanges() {
       renderAssistant();
     }
     if (changes[ringingStorageKey]) renderRinging(changes[ringingStorageKey].newValue);
+    if (changes[taskCheckStorageKey]) renderTaskCheck(changes[taskCheckStorageKey].newValue);
     if (changes[sessionStorageKey]) {
       focusSession = changes[sessionStorageKey].newValue || null;
       renderFocusSession();
+      renderTasks();
     }
   });
 }
@@ -1854,6 +2025,7 @@ readStoredValue(storageKey, (settingsResult) => {
   delete settings.blockedSites;
   delete settings.useChatGpt;
   readStoredValue(ringingStorageKey, (ringingResult) => renderRinging(ringingResult[ringingStorageKey]));
+  readStoredValue(taskCheckStorageKey, (checkResult) => renderTaskCheck(checkResult[taskCheckStorageKey]));
   readStoredValue(sessionStorageKey, (sessionResult) => {
     focusSession = sessionResult[sessionStorageKey] || null;
     applySettingsToUi();
@@ -1936,7 +2108,8 @@ startBackgroundSlideshow();
 
   setInterval(() => {
     const running = countdown && !countdown.hidden;
-    miniText.textContent = running ? "Focus " + countdownTime.textContent : "Focus";
+    const label = running && focusSession && focusSession.phase && focusSession.phase !== "focus" ? "Break " : "Focus ";
+    miniText.textContent = running ? label + countdownTime.textContent : "Focus";
   }, 500);
 })();
 
@@ -1982,6 +2155,8 @@ function renderQuote() {
 setInterval(() => {
   const quote = document.querySelector("#quote");
   if (quote && quote.textContent !== dailyQuote()) renderQuote();
+  // Today's minutes and the streak roll over at midnight.
+  renderStats();
 }, 60000);
 
 readStoredValue(stashStorageKey, (result) => {
