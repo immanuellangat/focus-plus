@@ -105,6 +105,11 @@ const defaults = {
   blockMode: "list",
   allowedSites: [],
   siteLimits: [],
+  mixEnabled: false,
+  mixTracks: [],
+  mixVolumes: {},
+  accent: "terracotta",
+  backgroundSource: "nature",
   blockGroups: [
     { id: "social", emoji: "📱", name: "Social Media", enabled: true, sites: ["facebook.com", "instagram.com", "x.com", "twitter.com", "tiktok.com", "snapchat.com", "reddit.com", "pinterest.com", "linkedin.com", "threads.net", "tumblr.com"] },
     { id: "entertainment", emoji: "🎬", name: "Entertainment", enabled: true, sites: ["youtube.com", "netflix.com", "twitch.tv", "hulu.com", "disneyplus.com", "primevideo.com", "spotify.com", "9gag.com"] },
@@ -261,9 +266,6 @@ const elements = {
 };
 
 let audioContext = null;
-let activeSources = [];
-let noiseGain = null;
-let streamAudio = null;
 let musicPlaying = false;
 
 function createNoiseBuffer(context, smoothing) {
@@ -428,49 +430,87 @@ function buildToneNode(context) {
   return { source: carrier, output: shaper, nodes: [carrier, lfo] };
 }
 
-function setMusicVolume(percent) {
-  const volume = Math.max(0, Math.min(100, percent)) / 100;
-  if (noiseGain) noiseGain.gain.value = volume;
-  if (streamAudio) streamAudio.volume = volume;
-}
-
-function startStream(config) {
-  streamAudio = new Audio(config.url);
-  streamAudio.crossOrigin = "anonymous";
-  streamAudio.volume = Number(elements.musicVolume.value) / 100;
-  streamAudio.play().catch(() => {
-    addAssistantMessage("error", "Couldn't reach the online chill radio stream. Check your internet connection and try again.");
-    stopMusic();
-    updateMusicButtonUi();
-  });
-  musicPlaying = true;
-}
-
+// Every playing sound is a layer feeding one master volume. Normally there's one layer;
+// the Pro mixer plays several at once, each at its own volume.
+const layers = new Map();
+let masterGain = null;
+let layerToken = 0;
 const sampleCache = {};
-let musicStartToken = 0;
 
-function playBuilt(built) {
-  noiseGain = audioContext.createGain();
-  setMusicVolume(Number(elements.musicVolume.value));
-  built.output.connect(noiseGain).connect(audioContext.destination);
-  built.nodes.forEach((node) => node.start());
-  activeSources = built.nodes;
+function mixing() {
+  return isPro() && settings.mixEnabled;
 }
 
-function startMusic() {
-  clearMediaPlayer();
-  const config = tracks[settings.musicTrack] || tracks.rain;
+function masterVolume() {
+  return Math.max(0, Math.min(100, Number(elements.musicVolume.value) || 0)) / 100;
+}
+
+function layerVolume(id) {
+  return mixing() ? (settings.mixVolumes[id] ?? 60) / 100 : 1;
+}
+
+function setMusicVolume() {
+  if (masterGain) masterGain.gain.value = masterVolume();
+  layers.forEach((layer, id) => {
+    if (layer.audio) layer.audio.volume = masterVolume() * layerVolume(id);
+  });
+}
+
+function setLayerVolume(id) {
+  const layer = layers.get(id);
+  if (!layer) return;
+  if (layer.gain) layer.gain.gain.value = layerVolume(id);
+  if (layer.audio) layer.audio.volume = masterVolume() * layerVolume(id);
+}
+
+function ensureAudio() {
+  audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+  if (audioContext.state === "suspended") audioContext.resume();
+  if (!masterGain) {
+    masterGain = audioContext.createGain();
+    masterGain.connect(audioContext.destination);
+  }
+  masterGain.gain.value = masterVolume();
+}
+
+function trackConfig(id) {
+  if (tracks[id]) return tracks[id];
+  const custom = customSounds.find((sound) => sound.id === id);
+  return custom && isPro()
+    ? { type: "sample", url: custom.url, gain: 1, fallback: { type: "noise", smoothing: 0.05, gain: 1 } }
+    : null;
+}
+
+function startLayer(id) {
+  const config = trackConfig(id);
+  if (!config || layers.has(id)) return;
+  const layer = { nodes: [], gain: null, audio: null, token: (layerToken += 1) };
+  layers.set(id, layer);
+  musicPlaying = true;
 
   if (config.type === "stream") {
-    startStream(config);
+    layer.audio = new Audio(config.url);
+    layer.audio.crossOrigin = "anonymous";
+    layer.audio.volume = masterVolume() * layerVolume(id);
+    layer.audio.play().catch(() => {
+      if (layers.get(id) !== layer) return;
+      addAssistantMessage("error", "Couldn't reach the online chill radio stream. Check your internet connection and try again.");
+      stopLayer(id);
+      updateMusicButtonUi();
+    });
     return;
   }
 
-  audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
-  if (audioContext.state === "suspended") audioContext.resume();
-  musicPlaying = true;
-  musicStartToken += 1;
-  const token = musicStartToken;
+  ensureAudio();
+  layer.gain = audioContext.createGain();
+  layer.gain.gain.value = layerVolume(id);
+  layer.gain.connect(masterGain);
+  const play = (built) => {
+    if (layers.get(id) !== layer) return;
+    built.output.connect(layer.gain);
+    built.nodes.forEach((node) => node.start());
+    layer.nodes = built.nodes;
+  };
 
   if (config.type === "sample") {
     const loading = sampleCache[config.url] || (sampleCache[config.url] = loadLoopBuffer(audioContext, config.url));
@@ -480,32 +520,49 @@ function startMusic() {
         delete sampleCache[config.url];
         return buildNoiseNode(audioContext, config.fallback);
       })
-      .then((built) => {
-        if (token === musicStartToken && musicPlaying) playBuilt(built);
-      });
+      .then(play);
     return;
   }
-
   if (config.type === "fire") {
-    playBuilt(buildFireNode(audioContext, config));
+    play(buildFireNode(audioContext, config));
     return;
   }
+  play(config.type === "tone" ? buildToneNode(audioContext) : buildNoiseNode(audioContext, config));
+}
 
-  playBuilt(config.type === "tone" ? buildToneNode(audioContext) : buildNoiseNode(audioContext, config));
+function stopLayer(id) {
+  const layer = layers.get(id);
+  if (!layer) return;
+  layers.delete(id);
+  layer.nodes.forEach((node) => {
+    try {
+      node.stop();
+    } catch {
+      // Already stopped.
+    }
+    node.disconnect();
+  });
+  layer.gain?.disconnect();
+  if (layer.audio) {
+    layer.audio.pause();
+    layer.audio.src = "";
+  }
+  musicPlaying = layers.size > 0;
+}
+
+function mixSelection() {
+  const valid = settings.mixTracks.filter((id) => trackConfig(id));
+  return valid.length ? valid : [settings.musicTrack];
+}
+
+function startMusic() {
+  clearMediaPlayer();
+  (mixing() ? mixSelection() : [settings.musicTrack]).forEach(startLayer);
+  if (!layers.size) startLayer("rain");
 }
 
 function stopMusic() {
-  musicStartToken += 1;
-  activeSources.forEach((node) => {
-    node.stop();
-    node.disconnect();
-  });
-  activeSources = [];
-  if (streamAudio) {
-    streamAudio.pause();
-    streamAudio.src = "";
-    streamAudio = null;
-  }
+  [...layers.keys()].forEach(stopLayer);
   musicPlaying = false;
 }
 
@@ -623,40 +680,225 @@ function showSoundsTab(tab) {
 
 document.querySelectorAll(".sounds-tab").forEach((tab) => tab.addEventListener("click", () => showSoundsTab(tab.dataset.tab)));
 
-function renderSounds() {
-  elements.soundsGrid.replaceChildren(
-    ...soundTiles.map((tile) => {
-      const item = document.createElement("li");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "sound-tile";
-      button.setAttribute("aria-pressed", String(settings.musicTrack === tile.id));
-      const art = document.createElement("span");
-      art.className = "sound-tile-art";
-      const photo = soundPhotos[tile.id];
-      const gradient = `linear-gradient(135deg, ${tile.color})`;
-      art.style.background = photo
-        ? `linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.45)), url("https://images.unsplash.com/photo-${photo}?auto=format&fit=crop&w=200&h=200&q=60") center / cover, ${gradient}`
-        : gradient;
-      art.textContent = tile.emoji;
-      const name = document.createElement("span");
-      name.className = "sound-tile-name";
-      name.textContent = tile.name;
-      button.append(art, name);
-      button.addEventListener("click", () => chooseSound(tile.id));
-      item.append(button);
-      return item;
-    }),
-  );
-  const current = soundTiles.find((tile) => tile.id === settings.musicTrack);
-  elements.soundsNow.textContent = musicPlaying && current ? `Now playing: ${current.name}` : "";
+// --- Your own sounds and photos (Pro), kept in IndexedDB on this computer only
+
+let customSounds = [];
+let customBackgrounds = [];
+let mediaDbPromise = null;
+
+function mediaDb() {
+  mediaDbPromise = mediaDbPromise || new Promise((resolve, reject) => {
+    const request = indexedDB.open("focus-plus-media", 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("files", { keyPath: "id" });
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  return mediaDbPromise;
 }
 
+async function mediaRequest(mode, action) {
+  const db = await mediaDb();
+  return new Promise((resolve, reject) => {
+    const request = action(db.transaction("files", mode).objectStore("files"));
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function loadCustomMedia() {
+  let files = [];
+  try {
+    files = await mediaRequest("readonly", (files) => files.getAll());
+  } catch {
+    // IndexedDB unavailable (for example a private window); the built-in media still work.
+  }
+  [...customSounds, ...customBackgrounds].forEach((item) => URL.revokeObjectURL(item.url));
+  const withUrls = files.sort((a, b) => a.addedAt - b.addedAt).map((file) => ({ ...file, url: URL.createObjectURL(file.blob) }));
+  customSounds = withUrls.filter((file) => file.kind === "sound");
+  customBackgrounds = withUrls.filter((file) => file.kind === "background");
+}
+
+const maxUploadBytes = { sound: 20 * 1024 * 1024, background: 12 * 1024 * 1024 };
+
+async function addCustomMedia(kind, fileList) {
+  if (!isPro()) return;
+  const accepted = [...fileList].filter((file) => file.size <= maxUploadBytes[kind]);
+  if (accepted.length < fileList.length) {
+    addAssistantMessage("error", `Some files were too big. The limit is ${maxUploadBytes[kind] / 1024 / 1024} MB per ${kind === "sound" ? "sound" : "photo"}.`);
+  }
+  for (const file of accepted) {
+    const record = {
+      id: `custom-${crypto.randomUUID()}`,
+      kind,
+      name: file.name.replace(/\.[^.]+$/, "").slice(0, 40) || (kind === "sound" ? "My sound" : "My photo"),
+      blob: file,
+      addedAt: Date.now(),
+    };
+    await mediaRequest("readwrite", (files) => files.put(record));
+  }
+  await loadCustomMedia();
+}
+
+async function deleteCustomMedia(id) {
+  stopLayer(id);
+  await mediaRequest("readwrite", (files) => files.delete(id));
+  settings.mixTracks = settings.mixTracks.filter((track) => track !== id);
+  if (settings.musicTrack === id) settings.musicTrack = "rain";
+  save();
+  await loadCustomMedia();
+}
+
+document.querySelector("#custom-sound-input").addEventListener("change", async (event) => {
+  await addCustomMedia("sound", event.target.files);
+  event.target.value = "";
+  renderSounds();
+});
+
+document.querySelector("#background-input").addEventListener("change", async (event) => {
+  await addCustomMedia("background", event.target.files);
+  event.target.value = "";
+  renderBackgroundSettings();
+  restartBackgroundSlideshow();
+});
+
+// --- Sounds panel
+
+function soundTileList() {
+  const custom = isPro()
+    ? customSounds.map((sound) => ({ id: sound.id, name: sound.name, emoji: "🎵", color: "#4f6a7a, #1f2f38", custom: true }))
+    : [];
+  return [...soundTiles, ...custom];
+}
+
+function tileIsOn(id) {
+  if (!mixing()) return settings.musicTrack === id;
+  return musicPlaying ? layers.has(id) : mixSelection().includes(id);
+}
+
+function renderSounds() {
+  const pro = isPro();
+  const mixer = document.querySelector("#mix-toggle");
+  mixer.setAttribute("aria-pressed", String(mixing()));
+  mixer.classList.toggle("locked", !pro);
+  mixer.querySelector(".pro-badge").hidden = pro;
+
+  const tiles = soundTileList().map((tile) => {
+    const item = document.createElement("li");
+    item.className = "sound-item";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "sound-tile";
+    button.setAttribute("aria-pressed", String(tileIsOn(tile.id)));
+    const art = document.createElement("span");
+    art.className = "sound-tile-art";
+    const photo = soundPhotos[tile.id];
+    const gradient = `linear-gradient(135deg, ${tile.color})`;
+    art.style.background = photo
+      ? `linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.45)), url("https://images.unsplash.com/photo-${photo}?auto=format&fit=crop&w=200&h=200&q=60") center / cover, ${gradient}`
+      : gradient;
+    art.textContent = tile.emoji;
+    const name = document.createElement("span");
+    name.className = "sound-tile-name";
+    name.textContent = tile.name;
+    button.append(art, name);
+    button.addEventListener("click", () => chooseSound(tile.id));
+    item.append(button);
+
+    if (mixing() && tileIsOn(tile.id)) {
+      const volume = document.createElement("input");
+      volume.type = "range";
+      volume.min = "0";
+      volume.max = "100";
+      volume.className = "tile-volume";
+      volume.value = String(settings.mixVolumes[tile.id] ?? 60);
+      volume.setAttribute("aria-label", `${tile.name} volume`);
+      volume.addEventListener("input", () => {
+        settings.mixVolumes[tile.id] = Number(volume.value);
+        setLayerVolume(tile.id);
+      });
+      volume.addEventListener("change", () => save());
+      item.append(volume);
+    }
+    if (tile.custom) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "sound-delete";
+      remove.textContent = "×";
+      remove.setAttribute("aria-label", `Delete ${tile.name}`);
+      remove.addEventListener("click", async () => {
+        await deleteCustomMedia(tile.id);
+        updateMusicButtonUi();
+      });
+      item.append(remove);
+    }
+    return item;
+  });
+
+  const addItem = document.createElement("li");
+  addItem.className = "sound-item";
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "sound-tile add-sound";
+  add.innerHTML = '<span class="sound-tile-art" aria-hidden="true">＋</span><span class="sound-tile-name">Your sound</span>';
+  if (!pro) add.querySelector(".sound-tile-name").insertAdjacentHTML("beforeend", ' <span class="pro-badge">PRO</span>');
+  add.setAttribute("aria-label", pro ? "Add your own sound" : "Add your own sound (Pro)");
+  add.addEventListener("click", () => {
+    if (!isPro()) {
+      openProFromDropdown();
+      return;
+    }
+    document.querySelector("#custom-sound-input").click();
+  });
+  addItem.append(add);
+
+  elements.soundsGrid.replaceChildren(...tiles, addItem);
+  const playingNames = soundTileList().filter((tile) => layers.has(tile.id)).map((tile) => tile.name);
+  elements.soundsNow.textContent = playingNames.length ? `Now playing: ${playingNames.join(" + ")}` : "";
+}
+
+function openProFromDropdown() {
+  elements.soundsDropdown.hidden = true;
+  elements.soundsCaret.setAttribute("aria-expanded", "false");
+  openSettingsTab("pro");
+}
+
+document.querySelector("#mix-toggle").addEventListener("click", () => {
+  if (!isPro()) {
+    openProFromDropdown();
+    return;
+  }
+  const playing = [...layers.keys()];
+  settings.mixEnabled = !settings.mixEnabled;
+  if (settings.mixEnabled) {
+    settings.mixTracks = playing.length ? playing : [settings.musicTrack];
+  } else if (playing.length > 1) {
+    // Leaving the mixer keeps just the first sound.
+    playing.slice(1).forEach(stopLayer);
+    settings.musicTrack = playing[0];
+  }
+  save();
+  [...layers.keys()].forEach(setLayerVolume);
+  updateMusicButtonUi();
+});
+
 function chooseSound(id) {
-  const wasPlaying = musicPlaying;
+  if (mixing()) {
+    const selected = mixSelection().filter((track) => track !== id);
+    if (tileIsOn(id)) {
+      settings.mixTracks = selected;
+      stopLayer(id);
+    } else {
+      settings.mixTracks = [...selected, id];
+      clearMediaPlayer();
+      if (musicPlaying || !layers.size) mixSelection().forEach(startLayer);
+    }
+    save();
+    updateMusicButtonUi();
+    return;
+  }
   settings.musicTrack = id;
   save();
-  if (wasPlaying) stopMusic();
+  stopMusic();
   startMusic();
   updateMusicButtonUi();
 }
@@ -680,6 +922,70 @@ function toggleMusic() {
   }
   updateMusicButtonUi();
 }
+
+// --- Accent colour and background photos (Pro)
+
+
+function applyAccent() {
+  const accent = (isPro() && accentColors[settings.accent]) || accentColors.terracotta;
+  document.documentElement.style.setProperty("--accent", accent.hex);
+  document.documentElement.style.setProperty("--accent-rgb", accent.rgb);
+  const swatches = document.querySelector("#accent-swatches");
+  swatches.replaceChildren(
+    ...Object.entries(accentColors).map(([key, value]) => {
+      const swatch = document.createElement("button");
+      swatch.type = "button";
+      swatch.className = "accent-swatch";
+      swatch.style.background = value.hex;
+      swatch.title = value.name;
+      swatch.disabled = !isPro();
+      swatch.setAttribute("role", "radio");
+      swatch.setAttribute("aria-label", value.name);
+      swatch.setAttribute("aria-checked", String((isPro() ? settings.accent : "terracotta") === key));
+      swatch.addEventListener("click", () => {
+        settings.accent = key;
+        save();
+        applyAccent();
+      });
+      return swatch;
+    }),
+  );
+}
+
+function usingCustomBackgrounds() {
+  return isPro() && settings.backgroundSource === "custom" && customBackgrounds.length > 0;
+}
+
+function renderBackgroundSettings() {
+  const toggle = document.querySelector("#custom-backgrounds");
+  toggle.checked = settings.backgroundSource === "custom";
+  document.querySelector("#background-list").replaceChildren(
+    ...customBackgrounds.map((photo) => {
+      const item = document.createElement("li");
+      item.className = "background-thumb";
+      item.style.backgroundImage = `url("${photo.url}")`;
+      item.title = photo.name;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "×";
+      remove.disabled = !isPro();
+      remove.setAttribute("aria-label", `Remove ${photo.name}`);
+      remove.addEventListener("click", async () => {
+        await deleteCustomMedia(photo.id);
+        renderBackgroundSettings();
+        restartBackgroundSlideshow();
+      });
+      item.append(remove);
+      return item;
+    }),
+  );
+}
+
+document.querySelector("#custom-backgrounds").addEventListener("change", (event) => {
+  settings.backgroundSource = event.target.checked ? "custom" : "nature";
+  save();
+  restartBackgroundSlideshow();
+});
 
 function getGreeting(hour) {
   if (hour < 12) return "Good morning";
@@ -762,6 +1068,14 @@ function renderPro() {
   document.querySelector(".pro-tab").textContent = status.active ? "Pro ✓" : "Pro ✦";
   renderProSections();
   renderBlockingPro();
+  applyAccent();
+  renderBackgroundSettings();
+  restartBackgroundSlideshow(false);
+  if (!status.active && layers.size > 1) {
+    // Without Pro the mixer is off, so keep only the first sound playing.
+    [...layers.keys()].slice(1).forEach(stopLayer);
+  }
+  updateMusicButtonUi();
 }
 
 document.querySelectorAll(".pro-unlock").forEach((button) => button.addEventListener("click", () => openSettingsTab("pro")));
@@ -2257,7 +2571,7 @@ elements.soundsToggle.addEventListener("click", () => toggleMusic());
 
 elements.musicVolume.addEventListener("input", () => {
   settings.musicVolume = Number(elements.musicVolume.value);
-  setMusicVolume(settings.musicVolume);
+  setMusicVolume();
 });
 
 // Save once the slider is released rather than on every step of the drag.
@@ -2347,6 +2661,9 @@ function applySettingsToUi() {
   elements.alarmVolume.value = settings.alarmVolume;
   renderAlarms();
   renderBlockingPro();
+  applyAccent();
+  renderBackgroundSettings();
+  restartBackgroundSlideshow(false);
   document.querySelectorAll(".cycles-toggle").forEach((toggle) => {
     toggle.checked = Boolean(settings.cyclesEnabled);
   });
@@ -2425,6 +2742,8 @@ readStoredValue(storageKey, (settingsResult) => {
     if (!Array.isArray(settings.focusHistory)) settings.focusHistory = [];
   if (!Array.isArray(settings.links)) settings.links = [];
   if (!Array.isArray(settings.alarms)) settings.alarms = [];
+  if (!Array.isArray(settings.mixTracks)) settings.mixTracks = [];
+  if (!settings.mixVolumes || typeof settings.mixVolumes !== "object") settings.mixVolumes = {};
   ["blockSchedules", "allowedSites", "siteLimits"].forEach((key) => {
     if (!Array.isArray(settings[key])) settings[key] = [];
   });
@@ -2456,8 +2775,9 @@ readStoredValue(storageKey, (settingsResult) => {
   readStoredValue("momentumUsage", (usageResult) => {
     usageToday = usageResult.momentumUsage || { minutes: {} };
   });
-  readStoredValue(proStorageKey, (proResult) => {
+  readStoredValue(proStorageKey, async (proResult) => {
     proState = proResult[proStorageKey] || null;
+    await loadCustomMedia();
     renderPro();
     renderBlocker();
   });
@@ -2491,30 +2811,45 @@ const backgroundPhotoIds = [
   "1464822759023-fed622ff2c3b",
 ];
 
+let slideshowTimer = null;
+let slideshowSource = null;
+
+function backgroundUrls() {
+  if (usingCustomBackgrounds()) return customBackgrounds.map((photo) => photo.url);
+  return backgroundPhotoIds.map((id) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=1920&q=70`);
+}
+
 function startBackgroundSlideshow() {
-  const layers = [document.querySelector("#bg-a"), document.querySelector("#bg-b")];
-  if (!layers[0] || !layers[1]) return;
-  const order = [...backgroundPhotoIds].sort(() => Math.random() - 0.5);
+  const layersEls = [document.querySelector("#bg-a"), document.querySelector("#bg-b")];
+  if (!layersEls[0] || !layersEls[1]) return;
+  clearInterval(slideshowTimer);
+  slideshowSource = usingCustomBackgrounds() ? "custom" : "nature";
+  const order = [...backgroundUrls()].sort(() => Math.random() - 0.5);
   let index = 0;
-  let front = 0;
+  let front = layersEls[1].classList.contains("visible") ? 1 : 0;
 
   const showNext = () => {
-    const id = order[index % order.length];
+    const url = order[index % order.length];
     index += 1;
-    const url = "https://images.unsplash.com/photo-" + id + "?auto=format&fit=crop&w=1920&q=70";
     const loader = new Image();
     loader.onload = () => {
-      const next = layers[1 - front];
-      next.style.backgroundImage = "url(\"" + url + "\")";
+      const next = layersEls[1 - front];
+      next.style.backgroundImage = `url("${url}")`;
       next.classList.add("visible");
-      layers[front].classList.remove("visible");
+      layersEls[front].classList.remove("visible");
       front = 1 - front;
     };
     loader.src = url;
   };
 
   showNext();
-  setInterval(showNext, 60000);
+  if (order.length > 1) slideshowTimer = setInterval(showNext, 60000);
+}
+
+// Restart only when the photo source actually changes (or the custom set did).
+function restartBackgroundSlideshow(force = true) {
+  const source = usingCustomBackgrounds() ? "custom" : "nature";
+  if (force || source !== slideshowSource) startBackgroundSlideshow();
 }
 
 startBackgroundSlideshow();

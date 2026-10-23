@@ -15,6 +15,36 @@ by the calm dashboard experience of Momentum.
 - Site blocker and notification silencing during focus sessions.
 - Tab stash.
 - Focus assistant powered by ChatGPT, DeepSeek or Gemini, or a private offline coach.
+- Optional **Focus Plus Pro**: stronger blocking, insights and personalisation (see below).
+
+## Focus Plus Pro
+
+Everything above is free. **Focus Plus Pro** (with a 7-day free trial) adds:
+
+- **Stronger blocking** (Settings → Blocking): strict mode (no "Unblock sites", blocker locked and an
+  "are you sure?" before stopping early), scheduled blocking (for example weekdays 9–5, overnight schedules
+  work too), allowlist mode (block everything except a list) and daily limits per site (counted while the
+  site is the tab you're looking at; blocked until midnight once used up).
+- **Insights** (✦ See all insights in the focus card): total focus, sessions, finish rate, longest streak,
+  a 12-month heatmap, your best focus hours, time per task, and CSV export of your history.
+- **Make it yours**: the **Mix** switch in the Sounds panel plays several sounds at once with their own
+  volumes; add your own sounds and background photos (kept on this computer in IndexedDB, not synced);
+  and six accent colours (Settings → General).
+
+Free users see Pro features with an **Unlock with Pro** button. If Pro ends, everything you set up is kept
+and comes back when you subscribe again.
+
+### Setting up payments
+
+Payments use [ExtensionPay](https://extensionpay.com) (Stripe underneath). Until it's set up, Pro can't be
+bought and the Pro tab says so.
+
+1. Create an ExtensionPay account and register the extension; choose your plans and a 7-day free trial.
+1. Put the extension id it gives you in `EXTPAY_ID` at the top of `pro.js`.
+1. Reload the extension. The Pro tab's buttons now open ExtensionPay's payment, trial and login pages.
+
+The paid status is checked at startup, every 6 hours and when you come back to a dashboard tab.
+`vendor/ExtPay.js` is ExtPay.js 3.1.2, unmodified, under the GNU LGPL v3 (licence texts in `vendor/`).
 
 ## Install locally
 

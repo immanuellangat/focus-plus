@@ -23,6 +23,9 @@
               <div class="sounds-header">
                 <h2 class="blocker-title">Sounds</h2>
                 <span id="sounds-now" class="sounds-now"></span>
+                <button id="mix-toggle" class="mix-toggle" type="button" aria-pressed="false" title="Play several sounds at once">
+                  Mix <span class="pro-badge">PRO</span>
+                </button>
                 <button id="sounds-toggle" class="sounds-toggle" type="button" aria-label="Play focus music">▶</button>
               </div>
               <div class="sounds-tabs" role="tablist">
@@ -31,6 +34,7 @@
                 <button type="button" class="sounds-tab" data-tab="spotify" aria-selected="false">Spotify</button>
               </div>
               <ul id="sounds-grid" class="sounds-grid" aria-label="Sounds"></ul>
+              <input id="custom-sound-input" type="file" accept="audio/*" hidden />
               <div id="media-panel" class="media-panel" hidden>
                 <ul id="media-list" class="media-list" aria-label="Playlists"></ul>
                 <div id="media-player" class="media-player"></div>
@@ -275,6 +279,27 @@
           <span>Use 24-hour time</span>
         </label>
         <button id="clear-tasks" class="secondary-button" type="button">Clear completed tasks</button>
+        <section class="pro-section" data-pro-section>
+          <h3 class="settings-subheading">Accent colour <span class="pro-badge">PRO</span></h3>
+          <div id="accent-swatches" class="accent-swatches" role="radiogroup" aria-label="Accent colour"></div>
+          <button class="pro-unlock" type="button">✦ Unlock with Pro</button>
+        </section>
+
+        <section class="pro-section" data-pro-section>
+          <h3 class="settings-subheading">Background <span class="pro-badge">PRO</span></h3>
+          <label class="toggle">
+            <input id="custom-backgrounds" type="checkbox" />
+            <span>Use my own photos instead of nature photos</span>
+          </label>
+          <ul id="background-list" class="background-list" aria-label="Your background photos"></ul>
+          <label class="secondary-button file-button">
+            Add photos
+            <input id="background-input" type="file" accept="image/*" multiple hidden />
+          </label>
+          <p class="settings-note">Your photos and sounds stay on this computer; they aren't synced.</p>
+          <button class="pro-unlock" type="button">✦ Unlock with Pro</button>
+        </section>
+
         <details class="credits">
           <summary>Credits and privacy</summary>
           <p>Sounds from Wikimedia Commons: Rain, Beach, Forest and Stream (public domain), Train (CC0), Wind by W.carter (CC BY-SA 4.0), Ocean by Luftrum (CC BY 3.0) and Thunder "rbh-thunder-storm" by Richard Humphries (CC BY 3.0). Photos from Unsplash. YouTube and Spotify players are provided by those services.</p>

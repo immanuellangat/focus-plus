@@ -117,9 +117,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-chrome.storage.local.get([storageKey, sessionKey]).then((stored) => {
+chrome.storage.local.get([storageKey, sessionKey, proStorageKey]).then((stored) => {
   settings = stored[storageKey] || {};
   session = stored[sessionKey] || null;
+  const accent = proStatus(stored[proStorageKey]).active && accentColors[settings.accent];
+  if (accent) document.documentElement.style.setProperty("--accent", accent.hex);
   renderStats();
   renderSession();
 });
