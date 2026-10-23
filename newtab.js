@@ -918,6 +918,183 @@ document.querySelector("#limit-form").addEventListener("submit", (event) => {
   renderBlockingPro();
 });
 
+// --- Insights (Pro)
+
+const insightsOverlay = document.querySelector("#insights-overlay");
+
+function heatLevel(minutes) {
+  if (!minutes) return 0;
+  if (minutes <= 15) return 1;
+  if (minutes <= 45) return 2;
+  if (minutes <= 90) return 3;
+  return 4;
+}
+
+function hourLabel(hour) {
+  const date = new Date();
+  date.setHours(hour, 0, 0, 0);
+  return date.toLocaleTimeString([], { hour: "numeric", hour12: !settings.use24Hour });
+}
+
+function renderInsights() {
+  const pro = isPro();
+  const data = focusInsights(settings.focusHistory);
+  document.querySelector("#insights-body").classList.toggle("locked", !pro);
+  document.querySelector("#insights-body").inert = !pro;
+  document.querySelector("#insights-lock").hidden = pro;
+
+  const tiles = [
+    ["Total focus", formatMinutes(data.totalMinutes)],
+    ["Sessions", String(data.sessions)],
+    ["Finished", `${data.completionRate}%`],
+    ["Longest streak", `${data.longestStreak} ${data.longestStreak === 1 ? "day" : "days"}`],
+  ];
+  document.querySelector("#insights-tiles").replaceChildren(
+    ...tiles.map(([label, value]) => {
+      const tile = document.createElement("div");
+      tile.className = "insights-tile";
+      const number = document.createElement("strong");
+      number.textContent = value;
+      const caption = document.createElement("span");
+      caption.textContent = label;
+      tile.append(number, caption);
+      return tile;
+    }),
+  );
+
+  const heatmap = document.querySelector("#insights-heatmap");
+  const months = document.querySelector("#insights-months");
+  let activeDays = 0;
+  heatmap.replaceChildren(
+    ...data.weeks.map((week) => {
+      const column = document.createElement("div");
+      column.className = "heat-week";
+      week.forEach((day) => {
+        const cell = document.createElement("span");
+        if (!day) {
+          cell.className = "heat-cell future";
+        } else {
+          cell.className = `heat-cell heat-${heatLevel(day.minutes)}`;
+          if (day.minutes) activeDays += 1;
+          cell.dataset.tip = `${day.date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}: ${day.minutes ? formatMinutes(day.minutes) : "no focus"}`;
+        }
+        column.append(cell);
+      });
+      return column;
+    }),
+  );
+  heatmap.setAttribute("aria-label", `Focus on ${activeDays} of the last 365 days, ${formatMinutes(data.totalMinutes)} in total.`);
+  months.replaceChildren(
+    ...data.weeks.map((week, index) => {
+      const label = document.createElement("span");
+      const firstOfMonth = week.find((day) => day && day.date.getDate() <= 7 && day.date.getDay() === 1);
+      if (firstOfMonth || index === 0) {
+        label.textContent = (firstOfMonth || week.find(Boolean)).date.toLocaleDateString([], { month: "short" });
+      }
+      return label;
+    }),
+  );
+
+  const busiestHour = Math.max(1, ...data.hours);
+  document.querySelector("#insights-hours").replaceChildren(
+    ...data.hours.map((minutes, hour) => {
+      const bar = document.createElement("span");
+      bar.className = `hour-bar${hour === data.peakHour ? " peak" : ""}`;
+      bar.style.height = `${minutes ? Math.max(6, Math.round((minutes / busiestHour) * 100)) : 2}%`;
+      bar.dataset.tip = `${hourLabel(hour)}–${hourLabel((hour + 1) % 24)}: ${formatMinutes(minutes)}`;
+      return bar;
+    }),
+  );
+  document.querySelector("#insights-hours").setAttribute("aria-label", data.peakHour === null
+    ? "No focus sessions yet."
+    : `Most focus starts around ${hourLabel(data.peakHour)}.`);
+  document.querySelector("#insights-peak").textContent = data.peakHour === null
+    ? "Finish a few sessions to see when you focus best."
+    : `You focus most around ${hourLabel(data.peakHour)}.`;
+
+  const longestTask = Math.max(1, ...data.topTasks.map((task) => task.minutes));
+  const taskList = document.querySelector("#insights-tasks");
+  taskList.replaceChildren(
+    ...(data.topTasks.length ? data.topTasks : [null]).map((task) => {
+      const item = document.createElement("li");
+      if (!task) {
+        item.className = "task-bars-empty";
+        item.textContent = "No focus sessions yet.";
+        return item;
+      }
+      const name = document.createElement("span");
+      name.className = "task-bar-name";
+      name.textContent = task.name;
+      const value = document.createElement("span");
+      value.className = "task-bar-value";
+      value.textContent = formatMinutes(task.minutes);
+      const track = document.createElement("span");
+      track.className = "task-bar-track";
+      const fill = document.createElement("span");
+      fill.className = "task-bar-fill";
+      fill.style.width = `${Math.max(2, Math.round((task.minutes / longestTask) * 100))}%`;
+      track.append(fill);
+      item.dataset.tip = `${task.name}: ${formatMinutes(task.minutes)} over ${task.sessions} ${task.sessions === 1 ? "session" : "sessions"}`;
+      item.append(name, value, track);
+      return item;
+    }),
+  );
+  document.querySelector("#export-csv").disabled = !pro || !settings.focusHistory.length;
+}
+
+function openInsights() {
+  renderInsights();
+  insightsOverlay.hidden = false;
+  document.querySelector("#close-insights").focus();
+}
+
+function closeInsights() {
+  insightsOverlay.hidden = true;
+  document.querySelector("#chart-tip").hidden = true;
+}
+
+document.querySelector("#open-insights").addEventListener("click", openInsights);
+document.querySelector("#close-insights").addEventListener("click", closeInsights);
+insightsOverlay.addEventListener("click", (event) => {
+  if (event.target === insightsOverlay) closeInsights();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !insightsOverlay.hidden) closeInsights();
+});
+document.querySelector("#insights-unlock").addEventListener("click", () => {
+  closeInsights();
+  openSettingsTab("pro");
+});
+
+// One tooltip for every chart mark that has a data-tip.
+const chartTip = document.querySelector("#chart-tip");
+document.querySelector("#insights-panel").addEventListener("pointermove", (event) => {
+  const mark = event.target.closest("[data-tip]");
+  if (!mark || document.querySelector("#insights-body").classList.contains("locked")) {
+    chartTip.hidden = true;
+    return;
+  }
+  const panel = document.querySelector("#insights-panel").getBoundingClientRect();
+  chartTip.textContent = mark.dataset.tip;
+  chartTip.hidden = false;
+  const left = Math.min(event.clientX - panel.left + 12, panel.width - chartTip.offsetWidth - 8);
+  chartTip.style.left = `${Math.max(8, left)}px`;
+  chartTip.style.top = `${event.clientY - panel.top + document.querySelector("#insights-panel").scrollTop - chartTip.offsetHeight - 10}px`;
+});
+document.querySelector("#insights-panel").addEventListener("pointerleave", () => {
+  chartTip.hidden = true;
+});
+
+document.querySelector("#export-csv").addEventListener("click", () => {
+  if (!isPro()) return;
+  const blob = new Blob(["\ufeff", historyToCsv(settings.focusHistory)], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `focus-plus-history-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+});
+
 // --- Alarm clock (background.js schedules and rings; the page edits and displays)
 
 const repeatLabels = { once: "Once", daily: "Every day", weekdays: "Weekdays" };
@@ -2215,6 +2392,7 @@ function listenForStorageChanges() {
     if (changes[proStorageKey]) {
       proState = changes[proStorageKey].newValue || null;
       renderPro();
+      if (!insightsOverlay.hidden) renderInsights();
       renderBlocker();
     }
     if (changes.momentumUsage) {

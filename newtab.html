@@ -143,6 +143,7 @@
             <span id="goal-fill" class="goal-fill"></span>
           </div>
           <ol id="stats-week" class="stats-week" aria-label="Focus minutes, last 7 days"></ol>
+          <button id="open-insights" class="insights-link" type="button">✦ See all insights</button>
         </div>
 
         <div class="focus-history-header">
@@ -176,6 +177,51 @@
       <span id="ringing-label" class="ringing-label"></span>
       <button id="ringing-snooze" class="ringing-button" type="button">Snooze 5 min</button>
       <button id="ringing-stop" class="ringing-button primary" type="button">Stop</button>
+    </div>
+
+    <div id="insights-overlay" class="insights-overlay" hidden>
+      <section id="insights-panel" class="insights-panel" role="dialog" aria-modal="true" aria-labelledby="insights-heading">
+        <div class="settings-header">
+          <div>
+            <p class="eyebrow">Focus Plus Pro</p>
+            <h2 id="insights-heading">Insights</h2>
+          </div>
+          <button id="close-insights" class="icon-button" type="button" aria-label="Close insights">×</button>
+        </div>
+        <div id="insights-body" class="insights-body">
+          <div id="insights-tiles" class="insights-tiles"></div>
+
+          <h3 class="insights-subheading">Last 12 months</h3>
+          <div class="heatmap-wrap">
+            <div id="insights-months" class="heatmap-months" aria-hidden="true"></div>
+            <div id="insights-heatmap" class="heatmap" role="img"></div>
+          </div>
+          <div class="heatmap-legend" aria-hidden="true">
+            <span>Less</span><i class="heat-0"></i><i class="heat-1"></i><i class="heat-2"></i><i class="heat-3"></i><i class="heat-4"></i><span>More</span>
+          </div>
+
+          <div class="insights-columns">
+            <div>
+              <h3 class="insights-subheading">Best focus hours</h3>
+              <p id="insights-peak" class="settings-note"></p>
+              <div id="insights-hours" class="hour-bars" role="img"></div>
+              <div class="hour-axis" aria-hidden="true"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>
+            </div>
+            <div>
+              <h3 class="insights-subheading">Time per task</h3>
+              <ol id="insights-tasks" class="task-bars"></ol>
+            </div>
+          </div>
+
+          <button id="export-csv" class="secondary-button" type="button">Export history as CSV</button>
+        </div>
+        <div id="insights-lock" class="insights-lock" hidden>
+          <p class="insights-lock-title">See your whole year of focus</p>
+          <p class="settings-note">Heatmap, best hours, time per task and CSV export are part of Focus Plus Pro.</p>
+          <button id="insights-unlock" class="pro-primary" type="button">✦ Unlock with Pro</button>
+        </div>
+        <div id="chart-tip" class="chart-tip" role="tooltip" hidden></div>
+      </section>
     </div>
 
     <div id="task-check" class="ringing-banner task-check" role="dialog" aria-labelledby="task-check-label" hidden>
