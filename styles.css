@@ -1461,3 +1461,205 @@ kbd {
   font-family: inherit;
   font-size: 0.85em;
 }
+
+/* Focus Plus Pro */
+
+.pro-badge {
+  margin-left: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f5d69a, #d18b68);
+  color: #102631;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  vertical-align: middle;
+}
+
+.pro-tab {
+  border-color: rgb(245 214 154 / 55%);
+  color: #f5d69a;
+}
+
+.pro-section {
+  position: relative;
+}
+
+.pro-section.locked > :not(.settings-subheading):not(.pro-unlock) {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.pro-unlock {
+  margin-top: 12px;
+  padding: 7px 14px;
+  border: 1px solid rgb(245 214 154 / 55%);
+  border-radius: 999px;
+  background: rgb(245 214 154 / 12%);
+  color: #f5d69a;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.pro-card {
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid rgb(245 214 154 / 40%);
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgb(245 214 154 / 12%), rgb(209 139 104 / 8%));
+}
+
+.pro-title {
+  margin: 6px 0 0;
+  font-size: 1.2rem;
+}
+
+.pro-features {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 4px;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.pro-features strong {
+  color: var(--text);
+}
+
+.pro-primary {
+  width: 100%;
+  margin-top: 18px;
+  padding: 11px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f5d69a, #d18b68);
+  color: #102631;
+  font-weight: 800;
+}
+
+.pro-card .secondary-button {
+  margin-top: 10px;
+}
+
+.pro-card .clear-assistant {
+  display: block;
+  margin: 14px auto 0;
+}
+
+.pro-card button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.blocking-off-note {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgb(240 196 138 / 12%);
+  color: #f0c48a;
+}
+
+.schedule-form {
+  margin-top: 12px;
+}
+
+.day-picker {
+  display: flex;
+  gap: 6px;
+}
+
+.day-picker label {
+  margin: 0 !important;
+}
+
+.day-picker input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.day-picker span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.day-picker input:checked + span {
+  border-color: #d18b68;
+  background: rgb(209 139 104 / 30%);
+  color: var(--text);
+}
+
+.day-picker input:focus-visible + span {
+  outline: 2px solid #f5d69a;
+}
+
+.schedule-times {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--muted);
+}
+
+.schedule-times input,
+.settings-panel #limit-form input {
+  min-width: 0;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  color-scheme: dark;
+}
+
+.schedule-times input {
+  flex: 1;
+}
+
+.settings-panel #limit-form #limit-domain {
+  flex: 1 1 auto;
+  order: 0;
+}
+
+.settings-panel #limit-form #limit-minutes {
+  width: 56px;
+  text-align: center;
+}
+
+.limit-unit {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.alarm-item .schedule-time,
+.alarm-item .limit-domain {
+  min-width: 0;
+  font-size: 0.92rem;
+}
+
+.allowed-sites {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 6%);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.84rem;
+}
+
+.strict-locked .blocker-groups,
+.strict-locked #blocker-add-form {
+  opacity: 0.55;
+}

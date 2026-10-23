@@ -1,6 +1,9 @@
 // Owns the focus session so it keeps running (and its blocks get lifted) no matter
 // how many dashboard tabs are open, closed, or reloaded.
 
+importScripts("pro.js", "vendor/ExtPay.js");
+if (EXTPAY_ID) ExtPay(EXTPAY_ID).startBackground();
+
 const storageKey = "momentumSettings";
 const sessionKey = "momentumSession";
 const assistantStorageKey = "momentumAssistant";
@@ -11,6 +14,10 @@ const alarmName = "focus-end";
 const clockAlarmPrefix = "clock-";
 const snoozePrefix = "snooze-";
 const blockRuleId = 1;
+const limitRuleId = 2;
+const usageKey = "momentumUsage";
+const blockTickAlarm = "block-tick";
+const proCheckAlarm = "pro-check";
 const snoozeMinutes = 5;
 const ringSeconds = 60;
 // An alarm that fires this late (the computer was asleep or Chrome closed) is skipped.
@@ -65,27 +72,162 @@ async function appendAssistantMessage(text) {
   await chrome.storage.local.set({ [assistantStorageKey]: messages.slice(-40) });
 }
 
-// Bring site and notification blocking in line with the current settings and session.
-// Blocking only applies while focusing; breaks are free.
+// --- Site blocking
+// Focus sessions block the enabled groups. Pro adds strict mode, scheduled blocking,
+// allowlist mode ("block everything except...") and daily time limits per site.
+
+function timeToMinutes(time) {
+  const [hours, minutes] = String(time || "").split(":").map(Number);
+  return Number.isInteger(hours) && Number.isInteger(minutes) ? hours * 60 + minutes : null;
+}
+
+// Schedules list the days they start on (0 = Sunday). One that ends before it starts
+// runs overnight into the next day.
+function scheduleActive(schedules, now = new Date()) {
+  const minute = now.getHours() * 60 + now.getMinutes();
+  const today = now.getDay();
+  const yesterday = (today + 6) % 7;
+  return (Array.isArray(schedules) ? schedules : []).some((schedule) => {
+    const start = timeToMinutes(schedule.start);
+    const end = timeToMinutes(schedule.end);
+    if (!schedule.enabled || start === null || end === null || start === end) return false;
+    const days = Array.isArray(schedule.days) ? schedule.days : [];
+    if (start < end) return days.includes(today) && minute >= start && minute < end;
+    return (days.includes(today) && minute >= start) || (days.includes(yesterday) && minute < end);
+  });
+}
+
+function dayStamp(now = new Date()) {
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+}
+
+async function readUsage() {
+  const usage = await getStored(usageKey);
+  const day = dayStamp();
+  return usage?.day === day ? usage : { day, minutes: {} };
+}
+
+function exceededDomains(settings, usage) {
+  return (Array.isArray(settings.siteLimits) ? settings.siteLimits : [])
+    .filter((limit) => limit.domain && (usage.minutes[limit.domain] || 0) >= limit.minutes)
+    .map((limit) => limit.domain);
+}
+
+function redirectRule(id, condition, reason, strict) {
+  return {
+    id,
+    priority: id,
+    action: { type: "redirect", redirect: { extensionPath: `/blocked.html?reason=${reason}${strict ? "&strict=1" : ""}` } },
+    condition: { resourceTypes: ["main_frame"], ...condition },
+  };
+}
+
+// Bring site and notification blocking in line with the settings, session and Pro status.
+// Focus blocking (and notification silencing) only applies while focusing; breaks are free.
 async function applyBlocks() {
-  const [settings = {}, session] = await Promise.all([getStored(storageKey), getStored(sessionKey)]);
+  const [settings = {}, session, proCache] = await Promise.all([
+    getStored(storageKey),
+    getStored(sessionKey),
+    getStored(proStorageKey),
+  ]);
+  const pro = proStatus(proCache).active;
   const focusing = Boolean(session) && (session.phase || "focus") === "focus";
-  const groups = Array.isArray(settings.blockGroups) ? settings.blockGroups : [];
-  const domains = focusing && settings.blockSites && !session.sitesUnblocked
-    ? parseBlockedSites(groups.filter((group) => group.enabled).flatMap((group) => group.sites || []).join("\n"))
-    : [];
+  const strict = pro && Boolean(settings.strictMode);
+  const focusBlock = focusing && (strict || !session.sitesUnblocked);
+  const scheduled = pro && scheduleActive(settings.blockSchedules);
+
+  const rules = [];
+  if (settings.blockSites && (focusBlock || scheduled)) {
+    const reason = focusBlock ? "focus" : "schedule";
+    if (pro && settings.blockMode === "allow") {
+      const allowed = parseBlockedSites((settings.allowedSites || []).join("\n"));
+      rules.push(redirectRule(blockRuleId, allowed.length ? { excludedRequestDomains: allowed } : {}, reason, focusBlock && strict));
+    } else {
+      const groups = Array.isArray(settings.blockGroups) ? settings.blockGroups : [];
+      const domains = parseBlockedSites(groups.filter((group) => group.enabled).flatMap((group) => group.sites || []).join("\n"));
+      if (domains.length) rules.push(redirectRule(blockRuleId, { requestDomains: domains }, reason, focusBlock && strict));
+    }
+  }
+  if (pro && settings.blockSites) {
+    const exceeded = exceededDomains(settings, await readUsage());
+    if (exceeded.length) rules.push(redirectRule(limitRuleId, { requestDomains: exceeded }, "limit", false));
+  }
+
   await chrome.declarativeNetRequest.updateSessionRules({
-    removeRuleIds: [blockRuleId],
-    addRules: domains.length
-      ? [{
-          id: blockRuleId,
-          priority: 1,
-          action: { type: "redirect", redirect: { extensionPath: "/blocked.html" } },
-          condition: { requestDomains: domains, resourceTypes: ["main_frame"] },
-        }]
-      : [],
+    removeRuleIds: [blockRuleId, limitRuleId],
+    addRules: rules,
   }).catch(() => {});
   await setNotifications(focusing && settings.blockNotifications !== false);
+  await updateBlockTick(settings, pro);
+}
+
+// Schedules and limits need a check every minute; nothing else does.
+async function updateBlockTick(settings, pro) {
+  const needed = pro && settings.blockSites && (
+    (settings.blockSchedules || []).some((schedule) => schedule.enabled) || (settings.siteLimits || []).length > 0
+  );
+  const existing = await chrome.alarms.get(blockTickAlarm);
+  if (needed && !existing) await chrome.alarms.create(blockTickAlarm, { periodInMinutes: 1 });
+  if (!needed && existing) await chrome.alarms.clear(blockTickAlarm);
+}
+
+function domainMatches(host, domain) {
+  return host === domain || host.endsWith(`.${domain}`);
+}
+
+// Count a minute against a limited site if it's the tab the user is looking at.
+async function trackUsage() {
+  const [settings = {}, proCache] = await Promise.all([getStored(storageKey), getStored(proStorageKey)]);
+  const limits = Array.isArray(settings.siteLimits) ? settings.siteLimits : [];
+  if (!limits.length || !settings.blockSites || !proStatus(proCache).active) return;
+  // "idle" just means no typing or mouse, as when watching a video, so it still counts.
+  if ((await chrome.idle.queryState(60)) === "locked") return;
+  const window = await chrome.windows.getLastFocused({ populate: true }).catch(() => null);
+  if (!window?.focused) return;
+  const tab = window.tabs?.find((candidate) => candidate.active);
+  let host;
+  try {
+    host = new URL(tab?.url || "").hostname.replace(/^www\./, "");
+  } catch {
+    return;
+  }
+  const limit = limits.find((candidate) => domainMatches(host, candidate.domain));
+  if (!limit) return;
+  const usage = await readUsage();
+  usage.minutes[limit.domain] = (usage.minutes[limit.domain] || 0) + 1;
+  await chrome.storage.local.set({ [usageKey]: usage });
+  if (usage.minutes[limit.domain] >= limit.minutes) {
+    // The block rule only catches new page loads, so move the open tab off the site too.
+    await chrome.tabs.update(tab.id, { url: chrome.runtime.getURL("blocked.html?reason=limit") }).catch(() => {});
+  }
+}
+
+// --- Pro status (ExtensionPay)
+
+async function refreshPro() {
+  if (!EXTPAY_ID) return;
+  try {
+    const user = await ExtPay(EXTPAY_ID).getUser();
+    await chrome.storage.local.set({
+      [proStorageKey]: {
+        paid: Boolean(user.paid),
+        trialStartedAt: user.trialStartedAt ? new Date(user.trialStartedAt).getTime() : null,
+        plan: user.plan || null,
+        subscriptionStatus: user.subscriptionStatus || null,
+        checkedAt: Date.now(),
+      },
+    });
+  } catch {
+    // Offline or ExtensionPay unreachable: keep the last known status.
+  }
+}
+
+async function openProPage({ kind }) {
+  if (!EXTPAY_ID) return;
+  const extpay = ExtPay(EXTPAY_ID);
+  if (kind === "trial") await extpay.openTrialPage(`${PRO_TRIAL_DAYS}-day`);
+  else if (kind === "login") await extpay.openLoginPage();
+  else await extpay.openPaymentPage();
 }
 
 // --- Toolbar badge: minutes left on the extension icon
@@ -329,6 +471,9 @@ async function runCommand(command) {
 }
 
 async function unblockSites() {
+  const [settings = {}, proCache] = await Promise.all([getStored(storageKey), getStored(proStorageKey)]);
+  // Strict mode has no way out until the session ends.
+  if (proStatus(proCache).active && settings.strictMode) return;
   const session = await getStored(sessionKey);
   if (session) await chrome.storage.local.set({ [sessionKey]: { ...session, sitesUnblocked: true } });
   await applyBlocks();
@@ -489,6 +634,8 @@ const handlers = {
   "alarm:snooze": () => snoozeAlarm(),
   "sound:preview": ({ sound }) => playSound(sound, 2.5),
   "sound:done": soundDone,
+  "pro:refresh": refreshPro,
+  "pro:open": openProPage,
 };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -501,6 +648,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === alarmName) serial(() => endSession(true));
   if (alarm.name === badgeAlarmName) serial(updateBadge);
+  if (alarm.name === blockTickAlarm) {
+    serial(async () => {
+      await trackUsage();
+      await applyBlocks();
+    });
+  }
+  if (alarm.name === proCheckAlarm) serial(refreshPro);
   if (alarm.name.startsWith(clockAlarmPrefix)) {
     serial(() => onClockAlarm(alarm.name.slice(clockAlarmPrefix.length), alarm.scheduledTime, false));
   }
@@ -511,7 +665,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  if (changes[storageKey] || changes[sessionKey]) serial(applyBlocks);
+  if (changes[storageKey] || changes[sessionKey] || changes[proStorageKey]) serial(applyBlocks);
   if (changes[storageKey]) serial(scheduleClockAlarms);
 });
 
@@ -551,3 +705,10 @@ chrome.runtime.onStartup.addListener(() => serial(reconcile));
 chrome.runtime.onInstalled.addListener(() => serial(reconcile));
 chrome.runtime.onStartup.addListener(() => serial(scheduleClockAlarms));
 chrome.runtime.onInstalled.addListener(() => serial(scheduleClockAlarms));
+
+// Check the Pro status at startup and every few hours (pages also ask when they regain focus).
+chrome.runtime.onStartup.addListener(() => serial(refreshPro));
+chrome.runtime.onInstalled.addListener(() => {
+  serial(refreshPro);
+  chrome.alarms.create(proCheckAlarm, { periodInMinutes: 360 });
+});

@@ -214,9 +214,11 @@
       <div class="settings-tabs" role="tablist">
         <button class="settings-tab" type="button" role="tab" data-tab="general" aria-selected="true">General</button>
         <button class="settings-tab" type="button" role="tab" data-tab="focus" aria-selected="false">Focus</button>
+        <button class="settings-tab" type="button" role="tab" data-tab="blocking" aria-selected="false">Blocking</button>
         <button class="settings-tab" type="button" role="tab" data-tab="alarms" aria-selected="false">Alarms</button>
         <button class="settings-tab" type="button" role="tab" data-tab="links" aria-selected="false">Links</button>
         <button class="settings-tab" type="button" role="tab" data-tab="ai" aria-selected="false">AI assistant</button>
+        <button class="settings-tab pro-tab" type="button" role="tab" data-tab="pro" aria-selected="false">Pro ✦</button>
       </div>
 
       <div id="settings-tab-general" class="settings-tab-panel" role="tabpanel">
@@ -310,6 +312,81 @@
           <button id="stash-clear" class="clear-assistant" type="button" hidden>Clear stash</button>
         </div>
         <ul id="stash-list" class="stash-list" aria-label="Stashed tabs"></ul>
+      </div>
+
+      <div id="settings-tab-blocking" class="settings-tab-panel" role="tabpanel" hidden>
+        <p id="blocking-off-note" class="settings-note blocking-off-note">
+          These work with the site blocker. Turn it on with <strong>Block distracting websites while focusing</strong>
+          in the Focus tab, or the switch in the 🚫 menu.
+        </p>
+
+        <section class="pro-section" data-pro-section>
+          <h3 class="settings-subheading first">Strict mode <span class="pro-badge">PRO</span></h3>
+          <label class="toggle">
+            <input id="strict-mode" type="checkbox" />
+            <span>During a focus session, hide "Unblock sites" and lock the blocker settings until it ends</span>
+          </label>
+          <button class="pro-unlock" type="button">✦ Unlock with Pro</button>
+        </section>
+
+        <section class="pro-section" data-pro-section>
+          <h3 class="settings-subheading">Scheduled blocking <span class="pro-badge">PRO</span></h3>
+          <p class="settings-note">Block your enabled groups at set times, with or without a focus session.</p>
+          <ul id="schedule-list" class="alarm-list" aria-label="Blocking schedules"></ul>
+          <form id="schedule-form" class="schedule-form">
+            <div id="schedule-days" class="day-picker" role="group" aria-label="Days"><label><input type="checkbox" value="1" checked /><span>M</span></label><label><input type="checkbox" value="2" checked /><span>T</span></label><label><input type="checkbox" value="3" checked /><span>W</span></label><label><input type="checkbox" value="4" checked /><span>T</span></label><label><input type="checkbox" value="5" checked /><span>F</span></label><label><input type="checkbox" value="6" /><span>S</span></label><label><input type="checkbox" value="0" /><span>S</span></label></div>
+            <div class="schedule-times">
+              <input id="schedule-start" type="time" value="09:00" aria-label="Start time" required />
+              <span>to</span>
+              <input id="schedule-end" type="time" value="17:00" aria-label="End time" required />
+              <button type="submit" class="add-button" aria-label="Add schedule">+</button>
+            </div>
+          </form>
+          <button class="pro-unlock" type="button">✦ Unlock with Pro</button>
+        </section>
+
+        <section class="pro-section" data-pro-section>
+          <h3 class="settings-subheading">Allowlist mode <span class="pro-badge">PRO</span></h3>
+          <label class="toggle">
+            <input id="allowlist-mode" type="checkbox" />
+            <span>Instead of blocking your groups, block every site except these</span>
+          </label>
+          <textarea id="allowed-sites" class="allowed-sites" rows="4" spellcheck="false" aria-label="Allowed websites, one per line" placeholder="docs.google.com&#10;github.com"></textarea>
+          <button class="pro-unlock" type="button">✦ Unlock with Pro</button>
+        </section>
+
+        <section class="pro-section" data-pro-section>
+          <h3 class="settings-subheading">Daily limits <span class="pro-badge">PRO</span></h3>
+          <p class="settings-note">Allow a site for a set time each day. After that it's blocked until midnight.</p>
+          <ul id="limit-list" class="alarm-list" aria-label="Daily limits"></ul>
+          <form id="limit-form" class="alarm-form">
+            <input id="limit-domain" type="text" maxlength="80" placeholder="youtube.com" aria-label="Website" required />
+            <input id="limit-minutes" type="number" min="1" max="600" value="30" aria-label="Minutes per day" />
+            <span class="limit-unit">min/day</span>
+            <button type="submit" class="add-button" aria-label="Add limit">+</button>
+          </form>
+          <button class="pro-unlock" type="button">✦ Unlock with Pro</button>
+        </section>
+      </div>
+
+      <div id="settings-tab-pro" class="settings-tab-panel" role="tabpanel" hidden>
+        <div class="pro-card">
+          <p class="eyebrow">Focus Plus Pro</p>
+          <h3 id="pro-title" class="pro-title">Do more with your focus</h3>
+          <p id="pro-detail" class="settings-note"></p>
+          <ul class="pro-features">
+            <li><strong>Stronger blocking:</strong> strict mode, schedules, allowlist mode and daily limits</li>
+            <li><strong>Insights:</strong> yearly heatmap, best focus hours, time per task and CSV export</li>
+            <li><strong>Make it yours:</strong> mix sounds, add your own sounds and backgrounds, pick an accent colour</li>
+          </ul>
+          <button id="pro-trial" class="pro-primary" type="button">Start 7-day free trial</button>
+          <button id="pro-upgrade" class="secondary-button" type="button">Upgrade to Pro</button>
+          <button id="pro-manage" class="secondary-button" type="button" hidden>Manage subscription</button>
+          <button id="pro-restore" class="clear-assistant" type="button">Already paid? Restore your purchase</button>
+          <p id="pro-config-note" class="settings-note" hidden>
+            Payments aren't connected in this build yet, so Pro can't be bought here.
+          </p>
+        </div>
       </div>
 
       <div id="settings-tab-alarms" class="settings-tab-panel" role="tabpanel" hidden>
@@ -418,6 +495,7 @@
     </aside>
     <div id="settings-backdrop" class="backdrop" hidden></div>
 
+    <script src="pro.js"></script>
     <script src="stats.js"></script>
     <script src="newtab.js"></script>
   </body>

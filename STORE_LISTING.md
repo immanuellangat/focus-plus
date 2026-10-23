@@ -14,12 +14,17 @@ A new-tab dashboard that helps you focus: a focus timer with breaks, stats and s
 - `alarms`: ends a focus session on time and lifts its site and notification blocks, even when no new tab page is open.
 - `notifications`: tells the user their focus session has ended (can be turned off in Settings) and shows the user's alarms with Stop and Snooze buttons.
 - `offscreen`: plays alarm and focus-end sounds from a hidden page, because the background service worker cannot play audio.
-- `tabs`: reads tab titles and addresses to stash open tabs when the user starts a focus session or taps "Stash open tabs now".
+- `tabs`: reads tab titles and addresses to stash open tabs when the user starts a focus session or taps "Stash open tabs now", and to count minutes on sites the user gives a daily limit (Pro).
+- `idle`: Pro daily limits don't count time while the screen is locked.
 - `contentSettings`: blocks website notifications during focus when the user enables it.
 - `declarativeNetRequest`: redirects sites on the user's blocked list to a local "stay focused" page.
 - Optional host permission `<all_urls>`: requested only when the user turns the site blocker on, because blocked sites can be any domain the user chooses.
 - Host permissions for api.openai.com, api.deepseek.com and generativelanguage.googleapis.com: send the user's assistant messages to the provider they selected.
 - `web_accessible_resources` (`blocked.html`): lets the redirect to the "stay focused" page work on blocked sites.
+
+## Paid features
+
+Focus Plus Pro (strict mode, scheduled blocking, allowlist mode, daily limits, insights and personalisation) is sold through ExtensionPay. The listing must say the extension contains in-app purchases.
 
 ## Remote code
 

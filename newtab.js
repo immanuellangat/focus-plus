@@ -100,6 +100,11 @@ const defaults = {
   roundsBeforeLongBreak: 4,
   autoStartFocus: true,
   dailyGoalMinutes: 120,
+  strictMode: false,
+  blockSchedules: [],
+  blockMode: "list",
+  allowedSites: [],
+  siteLimits: [],
   blockGroups: [
     { id: "social", emoji: "📱", name: "Social Media", enabled: true, sites: ["facebook.com", "instagram.com", "x.com", "twitter.com", "tiktok.com", "snapchat.com", "reddit.com", "pinterest.com", "linkedin.com", "threads.net", "tumblr.com"] },
     { id: "entertainment", emoji: "🎬", name: "Entertainment", enabled: true, sites: ["youtube.com", "netflix.com", "twitch.tv", "hulu.com", "disneyplus.com", "primevideo.com", "spotify.com", "9gag.com"] },
@@ -694,6 +699,224 @@ function renderClock() {
   elements.greeting.textContent = `${getGreeting(now.getHours())}${settings.name ? `, ${settings.name}` : ""}.`;
   renderNextAlarm();
 }
+
+// --- Focus Plus Pro (status is cached by background.js from ExtensionPay)
+
+let proState = null;
+let usageToday = { minutes: {} };
+
+function isPro() {
+  return proStatus(proState).active;
+}
+
+function openSettingsTab(name) {
+  toggleSettings(true);
+  document.querySelector(`.settings-tab[data-tab="${name}"]`)?.click();
+}
+
+function renderProSections() {
+  const pro = isPro();
+  document.querySelectorAll("[data-pro-section]").forEach((section) => {
+    section.classList.toggle("locked", !pro);
+    section.querySelectorAll("input, textarea, select, form button").forEach((control) => {
+      control.disabled = !pro;
+    });
+    section.querySelectorAll(".pro-unlock").forEach((button) => {
+      button.hidden = pro;
+    });
+  });
+}
+
+function renderPro() {
+  const status = proStatus(proState);
+  const title = document.querySelector("#pro-title");
+  const detail = document.querySelector("#pro-detail");
+  const configured = Boolean(EXTPAY_ID);
+  const buttons = {
+    trial: document.querySelector("#pro-trial"),
+    upgrade: document.querySelector("#pro-upgrade"),
+    manage: document.querySelector("#pro-manage"),
+    restore: document.querySelector("#pro-restore"),
+  };
+  buttons.trial.hidden = status.kind !== "free";
+  buttons.upgrade.hidden = status.kind === "paid";
+  buttons.manage.hidden = status.kind !== "paid";
+  buttons.restore.hidden = status.kind === "paid";
+  Object.values(buttons).forEach((button) => {
+    button.disabled = !configured;
+  });
+  document.querySelector("#pro-config-note").hidden = configured;
+  if (status.kind === "paid") {
+    title.textContent = "You're on Pro ✓";
+    detail.textContent = status.plan ? `Plan: ${formatPlan(status.plan)}. Thank you for supporting Focus Plus.` : "Thank you for supporting Focus Plus.";
+  } else if (status.kind === "trial") {
+    title.textContent = `Pro trial · ${status.daysLeft} ${status.daysLeft === 1 ? "day" : "days"} left`;
+    detail.textContent = "Everything below is unlocked. Upgrade any time to keep it.";
+  } else if (status.kind === "trialEnded") {
+    title.textContent = "Your Pro trial has ended";
+    detail.textContent = "Upgrade to keep using the Pro features.";
+  } else {
+    title.textContent = "Do more with your focus";
+    detail.textContent = `Try every Pro feature free for ${PRO_TRIAL_DAYS} days.`;
+  }
+  document.querySelector(".pro-tab").textContent = status.active ? "Pro ✓" : "Pro ✦";
+  renderProSections();
+  renderBlockingPro();
+}
+
+document.querySelectorAll(".pro-unlock").forEach((button) => button.addEventListener("click", () => openSettingsTab("pro")));
+document.querySelector("#pro-trial").addEventListener("click", () => sendFocusMessage({ type: "pro:open", kind: "trial" }));
+document.querySelector("#pro-upgrade").addEventListener("click", () => sendFocusMessage({ type: "pro:open", kind: "pay" }));
+document.querySelector("#pro-manage").addEventListener("click", () => sendFocusMessage({ type: "pro:open", kind: "pay" }));
+document.querySelector("#pro-restore").addEventListener("click", () => sendFocusMessage({ type: "pro:open", kind: "login" }));
+
+// After paying in another tab, coming back here re-checks the status.
+let lastProRefresh = 0;
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || Date.now() - lastProRefresh < 30000) return;
+  lastProRefresh = Date.now();
+  sendFocusMessage({ type: "pro:refresh" });
+});
+
+// Strict mode keeps the blocker locked while a focus round runs.
+function blockerLocked() {
+  return isPro() && settings.strictMode && Boolean(focusSession) && (focusSession.phase || "focus") === "focus";
+}
+
+const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function describeDays(days) {
+  const sorted = [...days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
+  const key = sorted.join(",");
+  if (key === "1,2,3,4,5") return "Weekdays";
+  if (key === "6,0") return "Weekends";
+  if (sorted.length === 7) return "Every day";
+  return sorted.map((day) => dayNames[day]).join(", ");
+}
+
+function renderBlockingPro() {
+  const locked = blockerLocked();
+  document.querySelector("#blocking-off-note").hidden = settings.blockSites;
+  const strict = document.querySelector("#strict-mode");
+  strict.checked = settings.strictMode;
+  if (isPro()) strict.disabled = locked;
+
+  const scheduleList = document.querySelector("#schedule-list");
+  scheduleList.replaceChildren(
+    ...settings.blockSchedules.map((schedule) => {
+      const item = document.createElement("li");
+      item.className = `alarm-item${schedule.enabled ? "" : " off"}`;
+      const time = document.createElement("span");
+      time.className = "alarm-time schedule-time";
+      time.textContent = `${formatAlarmTime(timeOfDay(schedule.start))}–${formatAlarmTime(timeOfDay(schedule.end))}`;
+      const meta = document.createElement("span");
+      meta.className = "alarm-meta";
+      meta.textContent = describeDays(schedule.days);
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.checked = schedule.enabled;
+      toggle.disabled = !isPro() || locked;
+      toggle.setAttribute("aria-label", `Schedule ${time.textContent} on`);
+      toggle.addEventListener("change", () => {
+        schedule.enabled = toggle.checked;
+        save();
+        renderBlockingPro();
+      });
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "delete-alarm";
+      remove.textContent = "×";
+      remove.disabled = !isPro() || locked;
+      remove.setAttribute("aria-label", `Delete schedule ${time.textContent}`);
+      remove.addEventListener("click", () => {
+        settings.blockSchedules = settings.blockSchedules.filter((candidate) => candidate.id !== schedule.id);
+        save();
+        renderBlockingPro();
+      });
+      item.append(time, meta, toggle, remove);
+      return item;
+    }),
+  );
+
+  const allowlist = document.querySelector("#allowlist-mode");
+  allowlist.checked = settings.blockMode === "allow";
+  const allowed = document.querySelector("#allowed-sites");
+  if (document.activeElement !== allowed) allowed.value = settings.allowedSites.join("\n");
+  allowed.hidden = settings.blockMode !== "allow";
+  if (isPro()) {
+    allowlist.disabled = locked;
+    allowed.disabled = locked;
+  }
+
+  const limitList = document.querySelector("#limit-list");
+  limitList.replaceChildren(
+    ...settings.siteLimits.map((limit) => {
+      const used = usageToday.minutes?.[limit.domain] || 0;
+      const item = document.createElement("li");
+      item.className = `alarm-item${used >= limit.minutes ? " off" : ""}`;
+      const domain = document.createElement("span");
+      domain.className = "alarm-time limit-domain";
+      domain.textContent = limit.domain;
+      const meta = document.createElement("span");
+      meta.className = "alarm-meta";
+      meta.textContent = used >= limit.minutes ? `Limit reached (${limit.minutes} min)` : `${used} of ${limit.minutes} min today`;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "delete-alarm";
+      remove.textContent = "×";
+      remove.disabled = !isPro() || locked;
+      remove.setAttribute("aria-label", `Remove the limit for ${limit.domain}`);
+      remove.addEventListener("click", () => {
+        settings.siteLimits = settings.siteLimits.filter((candidate) => candidate.id !== limit.id);
+        save();
+        renderBlockingPro();
+      });
+      item.append(domain, meta, remove);
+      return item;
+    }),
+  );
+}
+
+document.querySelector("#strict-mode").addEventListener("change", (event) => {
+  settings.strictMode = event.target.checked;
+  save();
+  renderBlocker();
+});
+
+document.querySelector("#schedule-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const days = [...document.querySelectorAll("#schedule-days input:checked")].map((box) => Number(box.value));
+  const start = document.querySelector("#schedule-start").value;
+  const end = document.querySelector("#schedule-end").value;
+  if (!days.length || !start || !end || start === end) return;
+  settings.blockSchedules.push({ id: crypto.randomUUID(), days, start, end, enabled: true });
+  save();
+  renderBlockingPro();
+});
+
+document.querySelector("#allowlist-mode").addEventListener("change", (event) => {
+  settings.blockMode = event.target.checked ? "allow" : "list";
+  save();
+  renderBlockingPro();
+});
+
+document.querySelector("#allowed-sites").addEventListener("change", (event) => {
+  settings.allowedSites = parseBlockedSites(event.target.value);
+  event.target.value = settings.allowedSites.join("\n");
+  save();
+});
+
+document.querySelector("#limit-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const [domain] = parseBlockedSites(document.querySelector("#limit-domain").value);
+  const minutes = Math.min(600, Math.max(1, Math.round(Number(document.querySelector("#limit-minutes").value) || 30)));
+  if (!domain) return;
+  settings.siteLimits = settings.siteLimits.filter((limit) => limit.domain !== domain);
+  settings.siteLimits.push({ id: crypto.randomUUID(), domain, minutes });
+  document.querySelector("#limit-domain").value = "";
+  save();
+  renderBlockingPro();
+});
 
 // --- Alarm clock (background.js schedules and rings; the page edits and displays)
 
@@ -1556,7 +1779,10 @@ elements.focusCustomDuration.addEventListener("keydown", (event) => {
 elements.focusStart.addEventListener("click", () => startFocusSession());
 elements.focusSkip.addEventListener("click", () => sendFocusMessage({ type: "focus:skipBreak" }));
 elements.focusPause.addEventListener("click", () => togglePauseFocusSession());
-elements.focusStop.addEventListener("click", () => sendFocusMessage({ type: "focus:stop" }));
+elements.focusStop.addEventListener("click", () => {
+  if (blockerLocked() && !window.confirm("Strict mode is on. Stop this focus session early?")) return;
+  sendFocusMessage({ type: "focus:stop" });
+});
 
 document.querySelector("#clear-focus-history").addEventListener("click", () => {
   settings.focusHistory = [];
@@ -1602,8 +1828,13 @@ elements.blockerMaster.addEventListener("change", () => setBlockSitesEnabled(ele
 const expandedBlockerGroups = new Set();
 
 function renderBlocker() {
+  const locked = blockerLocked();
   elements.blockSites.checked = settings.blockSites;
   elements.blockerMaster.checked = settings.blockSites;
+  elements.blockSites.disabled = locked;
+  elements.blockerMaster.disabled = locked;
+  elements.blockerAddName.disabled = locked;
+  elements.blockerDropdown.classList.toggle("strict-locked", locked);
   elements.blockerGroups.replaceChildren(
     ...settings.blockGroups.map((group) => {
       const item = document.createElement("li");
@@ -1623,6 +1854,7 @@ function renderBlocker() {
       toggle.type = "checkbox";
       toggle.checked = group.enabled;
       toggle.setAttribute("aria-label", `Block ${group.name}`);
+      toggle.disabled = locked;
       toggle.addEventListener("change", () => {
         group.enabled = toggle.checked;
         save();
@@ -1645,6 +1877,7 @@ function renderBlocker() {
       textarea.spellcheck = false;
       textarea.value = group.sites.join("\n");
       textarea.setAttribute("aria-label", `${group.name} websites, one per line`);
+      textarea.disabled = locked;
       textarea.addEventListener("change", () => {
         group.sites = parseBlockedSites(textarea.value);
         save();
@@ -1654,6 +1887,7 @@ function renderBlocker() {
       remove.type = "button";
       remove.className = "clear-assistant";
       remove.textContent = "Delete group";
+      remove.disabled = locked;
       remove.addEventListener("click", () => {
         settings.blockGroups = settings.blockGroups.filter((candidate) => candidate !== group);
         save();
@@ -1935,6 +2169,7 @@ function applySettingsToUi() {
   elements.focusEndSound.value = settings.focusEndSound;
   elements.alarmVolume.value = settings.alarmVolume;
   renderAlarms();
+  renderBlockingPro();
   document.querySelectorAll(".cycles-toggle").forEach((toggle) => {
     toggle.checked = Boolean(settings.cyclesEnabled);
   });
@@ -1977,10 +2212,21 @@ function listenForStorageChanges() {
     }
     if (changes[ringingStorageKey]) renderRinging(changes[ringingStorageKey].newValue);
     if (changes[taskCheckStorageKey]) renderTaskCheck(changes[taskCheckStorageKey].newValue);
+    if (changes[proStorageKey]) {
+      proState = changes[proStorageKey].newValue || null;
+      renderPro();
+      renderBlocker();
+    }
+    if (changes.momentumUsage) {
+      usageToday = changes.momentumUsage.newValue || { minutes: {} };
+      renderBlockingPro();
+    }
     if (changes[sessionStorageKey]) {
       focusSession = changes[sessionStorageKey].newValue || null;
       renderFocusSession();
       renderTasks();
+      renderBlocker();
+      renderBlockingPro();
     }
   });
 }
@@ -2001,6 +2247,9 @@ readStoredValue(storageKey, (settingsResult) => {
     if (!Array.isArray(settings.focusHistory)) settings.focusHistory = [];
   if (!Array.isArray(settings.links)) settings.links = [];
   if (!Array.isArray(settings.alarms)) settings.alarms = [];
+  ["blockSchedules", "allowedSites", "siteLimits"].forEach((key) => {
+    if (!Array.isArray(settings[key])) settings[key] = [];
+  });
   if (typeof storedSettings.aiProvider !== "string" && typeof storedSettings.useChatGpt === "boolean") {
     // Migrate the old on/off ChatGPT toggle to the new provider selection.
     settings.aiProvider = storedSettings.useChatGpt === false ? "offline" : "chatgpt";
@@ -2026,6 +2275,14 @@ readStoredValue(storageKey, (settingsResult) => {
   delete settings.useChatGpt;
   readStoredValue(ringingStorageKey, (ringingResult) => renderRinging(ringingResult[ringingStorageKey]));
   readStoredValue(taskCheckStorageKey, (checkResult) => renderTaskCheck(checkResult[taskCheckStorageKey]));
+  readStoredValue("momentumUsage", (usageResult) => {
+    usageToday = usageResult.momentumUsage || { minutes: {} };
+  });
+  readStoredValue(proStorageKey, (proResult) => {
+    proState = proResult[proStorageKey] || null;
+    renderPro();
+    renderBlocker();
+  });
   readStoredValue(sessionStorageKey, (sessionResult) => {
     focusSession = sessionResult[sessionStorageKey] || null;
     applySettingsToUi();

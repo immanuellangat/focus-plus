@@ -46,6 +46,7 @@
     "notifications",
     "offscreen",
     "tabs",
+    "idle",
     "contentSettings",
     "declarativeNetRequest"
   ],
