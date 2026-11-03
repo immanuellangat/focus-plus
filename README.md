@@ -3,6 +3,33 @@
 Focus Plus is a small, dependency-free Chrome new-tab extension inspired
 by the calm dashboard experience of Momentum.
 
+## Project overview
+
+Focus Plus is a Manifest V3 Chrome extension that turns the new-tab page into a personal workspace for focused work. It combines time management, task tracking and distraction controls in a browser-based dashboard.
+
+**Highlights**
+- Run focus sessions with Pomodoro-style breaks and track daily progress.
+- Organise tasks, quick links, alarms and saved tabs.
+- Reduce distractions with configurable website blocking and notification silencing.
+- Use ambient audio and optional AI coaching, with an offline coach available.
+- Keep settings and personal activity data in Chrome storage rather than a project-owned server.
+
+## Technology
+
+- **Platform:** Google Chrome Extension
+- **Extension standard:** Manifest V3
+- **Background processing:** Chrome extension service worker
+- **Storage:** `chrome.storage.local` and selected sync settings via `chrome.storage.sync`
+- **Browser APIs:** Storage, alarms, notifications, tabs, idle detection and declarative network rules
+- **Optional AI providers:** OpenAI, DeepSeek and Google Gemini; users supply their own API keys
+
+The extension is designed to run locally in Chrome and does not require a project backend. AI requests are sent directly from the browser to the provider selected by the user.
+
+## Repository contents
+
+The repository contains the extension source, its manifest, dashboard and popup pages, local sound assets, icons, and the optional Pro payment integration. The detailed feature and setup notes below explain how to install and use it.
+
+
 ## Features
 
 - Clock, greeting, daily quote and rotating nature backgrounds.
