@@ -3,11 +3,35 @@
 Focus Plus is a small, dependency-free Chrome new-tab extension inspired
 by the calm dashboard experience of Momentum.
 
+[![Check](https://github.com/immanuellangat/focus-plus/actions/workflows/check.yml/badge.svg)](https://github.com/immanuellangat/focus-plus/actions/workflows/check.yml)
+
+![Focus Plus dashboard](store/screenshots/1-dashboard.png)
+
+| Ambient sounds | Site blocker |
+| --- | --- |
+| ![Sounds panel](store/screenshots/2-sounds.png) | ![Site blocker](store/screenshots/3-site-blocker.png) |
+
+| Tasks | Focus assistant |
+| --- | --- |
+| ![Tasks card](store/screenshots/4-tasks.png) | ![Focus assistant](store/screenshots/5-focus-assistant.png) |
+
+## Contents
+
+- [Project overview](#project-overview)
+- [Technology](#technology)
+- [Features](#features)
+- [Focus Plus Pro](#focus-plus-pro)
+- [Install locally](#install-locally)
+- [Storage](#storage)
+- [How it works](#how-it-works)
+- [Privacy](#privacy)
+
 ## Project overview
 
 Focus Plus is a Manifest V3 Chrome extension that turns the new-tab page into a personal workspace for focused work. It combines time management, task tracking and distraction controls in a browser-based dashboard.
 
 **Highlights**
+
 - Run focus sessions with Pomodoro-style breaks and track daily progress.
 - Organise tasks, quick links, alarms and saved tabs.
 - Reduce distractions with configurable website blocking and notification silencing.
@@ -28,7 +52,6 @@ The extension is designed to run locally in Chrome and does not require a projec
 ## Repository contents
 
 The repository contains the extension source, its manifest, dashboard and popup pages, local sound assets, icons, and the optional Pro payment integration. The detailed feature and setup notes below explain how to install and use it.
-
 
 ## Features
 
@@ -92,6 +115,9 @@ Chrome profiles where the extension is installed). Nothing is sent to a server o
 ## How it works
 
 The dashboard runs entirely in the browser and keeps preferences in local Chrome storage.
+
+### Focus assistant
+
 The focus assistant supports four modes, chosen from the **Assistant** dropdown in the
 **AI assistant** settings tab: **ChatGPT (OpenAI)**, **DeepSeek**, **Gemini (Google)**, or
 the private **Offline coach**.
@@ -103,6 +129,8 @@ directly to that provider (`https://api.openai.com`, `https://api.deepseek.com`,
 server. Switch the dropdown to **Offline coach** at any time to use a rule-based assistant
 that never sends messages or personal data over the network.
 
+### Focus sessions
+
 Type your main focus, pick a session length (or choose **Custom...** to enter your own
 desired minutes), and select **Start focus** to begin a countdown timer. Select **Pause**
 to hold the countdown and **Resume** to continue, or **Stop session** to end early. Every
@@ -113,15 +141,21 @@ When a session finishes, Chrome shows a notification (turn this off with
 **Notify me when a session ends** in the **Focus** tab of **Settings**). Use **Clear history** to
 remove it.
 
+### Quick links
+
 The 🔗 button in the top-left corner opens a quick-links menu. Add a name and URL to
 save a shortcut, click a saved link to open it in a new tab, and use **×** to remove it.
 The same list is also editable from the **Links** tab in **Settings**, since both share
 the same saved data.
 
+### Notification silencing
+
 Starting a focus session also silences browser notification pop-ups from other sites,
 so nothing interrupts you. Look for the **🔕 Notifications paused** note under the
 countdown while a session is active — this can be turned off from the **Focus** tab
 in **Settings** if you'd rather keep notifications on.
+
+### Dashboard and settings
 
 **Settings** is organized into tabs — **General**, **Focus**, **Links**, and **AI
 assistant** — so related options are grouped together instead of one long scrolling list.
@@ -131,11 +165,13 @@ if you are offline, the default gradient stays in place.
 
 The focus timer starts minimized as a small pill above the Focus assistant button. Tap it to
 expand it to the center of the screen, and use the close button, the backdrop or Escape to
-minimize it. While a session runs, the pill shows the remaining time. The Tasks card works the same way,\nwith its own pill stacked above the focus pill.
+minimize it. While a session runs, the pill shows the remaining time. The Tasks card works the same way with its own pill stacked above the focus pill.
 
 The quote under the clock changes every day. There are 65 encouraging quotes that cycle in order,
 so each day shows a different one and the list starts over after the last. It also updates at midnight
 if the tab stays open.
+
+### Sounds and music
 
 The **Play** button in the top bar plays and pauses music, and the small ▾ next to it drops down a tile grid (Rainfall, Wind, Noise, Ocean, Beach, Forest,
 Stream, Train, Thunder, Fire, Calm tone and Chill radio). Everything except Chill radio works offline; Chill radio streams SomaFM's Groove Salad and needs a connection. Each tile shows a small Unsplash photo (loaded online, with a gradient fallback offline). Tap a tile to start it; the ▶/⏸ button inside the panel pauses and resumes it. The panel also has **YouTube** (Lofi Girl, Chillhop, jazz and piano live streams, nature sounds) and **Spotify** (Deep Focus, Lofi Beats, Peaceful Piano and similar playlists) tabs that play embedded players (YouTube plays through a small player page hosted on this project's GitHub Pages, because YouTube refuses to embed directly inside extension pages); they need an internet connection, Spotify plays full tracks only when you are logged in to Spotify in Chrome (otherwise 30-second previews), and starting one stops the built-in sound.
@@ -153,6 +189,8 @@ generated as softer pink noise, and Fire is synthesized (soft embers plus random
 - `train.ogg`: "Taiwan railways EP727 train cars sounds", CC0.
 - `thunder.ogg`: "rbh-thunder-storm" by Richard Humphries, CC BY 3.0.
 
+### Site blocker
+
 The 🚫 **Site Blocker** button in the top bar opens a list of blocked groups (Social Media, Entertainment,
 News, Shopping and Email). Switch a group on or off, open its arrow to edit the websites in it, or add your own
 group. The master switch at the top of the panel (also in the **Focus** tab in **Settings**) turns blocking
@@ -160,25 +198,35 @@ on or off, and Chrome asks for extra permission the first time you enable it. Wh
 running, sites in the enabled groups and their subdomains show a "stay focused" page; the block lifts when
 the session ends or is stopped, and that page has an **Unblock sites** button as an escape hatch.
 
-**Focus cycles.** Tick **Repeat with breaks** under the focus timer (or in the **Focus** tab of
+### Focus cycles
+
+Tick **Repeat with breaks** under the focus timer (or in the **Focus** tab of
 **Settings**) to run Pomodoro-style cycles: each finished focus round is followed by a short break,
 and every few rounds by a long one (5 min, 15 min and every 4 rounds by default; all adjustable). The next
 round starts by itself after a break unless you turn that off. Site and notification blocking pause during
 breaks. **Skip break** starts the next round straight away; **Stop session** ends the cycle.
 
-**Toolbar and shortcuts.** The Focus Plus icon in Chrome's toolbar shows the minutes left (orange while
+### Toolbar and shortcuts
+
+The Focus Plus icon in Chrome's toolbar shows the minutes left (orange while
 focusing, green on a break, ❚❚ when paused). Click it for a small panel to start, pause, stop or skip a
 break from any page, with today's minutes and your streak. <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>
 starts a session with your last focus and length, or pauses and resumes it, and
 <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> stops it. Change the keys at `chrome://extensions/shortcuts`.
 
-**Stats and streaks.** The focus card shows today's focus time, the last 7 days, a bar for each day, your
+### Stats and streaks
+
+The focus card shows today's focus time, the last 7 days, a bar for each day, your
 streak (days in a row with at least one finished session; today doesn't break it until it's over) and a
 daily goal bar (120 minutes by default; set it, or 0 to hide it, in the **Focus** tab of **Settings**).
 
-**Focus on a task.** Each open task has a ▶ button that starts a focus session on it (typing an open task's
+### Focus on a task
+
+Each open task has a ▶ button that starts a focus session on it (typing an open task's
 exact name as your focus links it too). When the session finishes, the dashboard and the notification ask
 whether the task is done, and **Mark done** ticks it off.
+
+### Alarms
 
 The **Alarms** tab in **Settings** is an alarm clock. Add a time, an optional label and how often it
 repeats (once, every day or weekdays). When an alarm goes off, it rings with the sound you pick and shows
@@ -188,6 +236,13 @@ after a minute. The next alarm is shown next to the date at the top of the dashb
 sound played when a focus session ends (or **No sound**) and the alarm volume. All alarm sounds are
 synthesized, so they work offline.
 
+### Tab stash
+
 The **Focus** tab also has **Tab Stash**, which saves your other open tabs in the current window (pinned tabs are kept) and closes them, either
 automatically when a focus session starts or with **Stash open tabs now**. Use **Restore all** to reopen them.
 The stash is stored locally and is not synced between profiles.
+
+## Privacy
+
+Focus Plus has no account system, no analytics and no advertising. See [PRIVACY.md](PRIVACY.md) for
+exactly what is stored on your device and what is sent to the optional third-party services.
